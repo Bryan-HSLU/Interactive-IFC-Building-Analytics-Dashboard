@@ -1,0 +1,37 @@
+material_key,material_label_de,co2e_kg_per_m3,grey_energy_kwh_per_m3,cost_chf_per_m3,density_kg_per_m3
+concrete,Beton,200,350,250,2400
+reinforced_concrete,Stahlbeton,300,500,400,2500
+steel,Stahl,1500,5000,3000,7850
+wood_softwood,"Holz (Nadelholz)",25,80,180,500
+wood_hardwood,"Holz (Laubholz)",30,100,350,700
+brick,Backstein,150,300,200,1800
+glass,Glas,800,2500,600,2500
+insulation_eps,"Dämmung EPS",80,250,120,30
+insulation_mineral,"Dämmung Mineralwolle",40,150,100,100
+insulation_pur,"Dämmung PUR",120,400,200,35
+gypsum,Gips,50,120,80,1200
+gypsum_board,Gipskarton,60,140,90,900
+aluminum,Aluminium,8000,30000,5000,2700
+copper,Kupfer,4000,15000,8000,8900
+pvc,PVC,3000,10000,400,1400
+ceramic,Keramik,200,400,300,2000
+ceramic_tile,Keramikfliesen,250,500,350,2300
+mortar,"Mörtel",100,200,150,1800
+bitumen,Bitumen,500,1500,200,1050
+natural_stone,Naturstein,60,100,500,2600
+limestone,Kalkstein,80,130,300,2400
+sandstone,Sandstein,70,120,400,2200
+zinc,Zink,3500,12000,4000,7100
+lead,Blei,2000,8000,3000,11340
+plaster,Verputz,90,180,120,1600
+linoleum,Linoleum,150,400,100,1200
+rubber,Gummi,2500,8000,300,1500
+polyethylene,Polyethylen,2000,7000,350,950
+fibre_cement,Faserzement,300,600,250,1800
+mineral_fibre,Mineralfaser,45,160,110,120
+cork,Kork,20,60,250,200
+straw,Stroh,5,15,50,100
+clay,Lehm,10,30,80,1600
+concrete_lightweight,Leichtbeton,120,250,200,1800
+precast_concrete,Betonfertigteil,280,480,350,2400
+unknown,Unbekannt,,,,

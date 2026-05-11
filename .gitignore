@@ -1,0 +1,38 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# AI assistant context (project-internal only)
+CLAUDE.md
+docs/
+
+# Streamlit cache
+.streamlit/
+
+# IFC files (large binaries — share separately)
+*.ifc
+*.IFC
+
+# Environment variables
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs
+*.log

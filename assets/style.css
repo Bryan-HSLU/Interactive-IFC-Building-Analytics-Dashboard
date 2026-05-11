@@ -1,0 +1,76 @@
+/* IFC Building Analytics Dashboard — Custom CSS */
+
+/* Main font */
+html, body, [class*="css"] {
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+/* Hide Streamlit default footer */
+footer { visibility: hidden; }
+
+/* Mode cards on upload page */
+.mode-card {
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    margin-bottom: 8px;
+}
+.mode-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.mode-card.neubau.active {
+    border-color: #2980B9;
+    background-color: #EBF5FB;
+}
+.mode-card.umbau.active {
+    border-color: #E67E22;
+    background-color: #FDEBD0;
+}
+
+/* KPI metric compact */
+[data-testid="metric-container"] {
+    background: #FAFAFA;
+    border: 1px solid #ECF0F1;
+    border-radius: 6px;
+    padding: 10px 14px;
+}
+
+/* Cross-filter active indicator */
+.filter-active {
+    background-color: #EBF5FB;
+    border-left: 3px solid #2980B9;
+    padding: 6px 10px;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.9em;
+    color: #2980B9;
+}
+
+/* Quality badge colors */
+.badge-ok { color: #27AE60; font-weight: 600; }
+.badge-warning { color: #E67E22; font-weight: 600; }
+.badge-critical { color: #C0392B; font-weight: 600; }
+
+/* Sidebar quality indicator */
+.sidebar-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+.sidebar-badge.ok { background: #D5F5E3; color: #27AE60; }
+.sidebar-badge.warning { background: #FCF3CF; color: #E67E22; }
+.sidebar-badge.critical { background: #FADBD8; color: #C0392B; }
+
+/* Dataframe styling */
+[data-testid="stDataFrame"] {
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* Progress bar */
+.stProgress > div > div {
+    background-color: #2980B9;
+}

@@ -4,7 +4,10 @@ import numpy as np
 from streamlit_plotly_events import plotly_events
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
-from src.chart_factory import create_co2_bar, create_co2_treemap, create_cost_heatmap
+from src.chart_factory import (
+    create_co2_bar, create_co2_treemap, create_cost_heatmap,
+    create_waterfall_co2, create_sankey_material, create_slope_co2,
+)
 from src.impact_calculator import get_impact_summary
 from src.constants import SIA_2032_LIMIT
 
@@ -116,6 +119,15 @@ with tab_co2:
                 st.session_state.cf_page5_material = clicked
                 st.rerun()
 
+    st.divider()
+    col_wf, col_sankey = st.columns(2)
+    with col_wf:
+        fig_wf = create_waterfall_co2(element_df)
+        st.plotly_chart(fig_wf, use_container_width=True)
+    with col_sankey:
+        fig_sankey = create_sankey_material(element_df)
+        st.plotly_chart(fig_sankey, use_container_width=True)
+
 with tab_cost:
     # KPI cards
     kpi_c = st.columns(3)
@@ -145,6 +157,9 @@ with tab_zirk:
     if mode != "umbau":
         st.info("Diese Ansicht ist nur im Umbau-Modus verfügbar.")
     else:
+        fig_slope = create_slope_co2(element_df)
+        st.plotly_chart(fig_slope, use_container_width=True)
+        st.divider()
         if "status" in element_df.columns:
             total = len(element_df)
             bestand = (element_df["status"] == "Bestand").sum()

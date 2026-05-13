@@ -6,6 +6,7 @@ from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
     create_quality_gauge, create_error_bar,
     create_status_distribution, create_pset_matrix_heatmap,
+    create_upset_plot,
 )
 from src.quality_checker import build_pset_matrix
 
@@ -126,7 +127,17 @@ with col_status:
         else:
             st.info("Keine Pset-Daten verfügbar.")
 
-# ── Section C: Pset Matrix ──────────────────────────────────────────────────
+# ── Section C: UpSet Plot ───────────────────────────────────────────────────
+st.divider()
+st.subheader("Fehler-Schnittmengen (UpSet Plot)")
+st.caption("Welche Fehlerkombinationen treten gemeinsam auf?")
+if error_df is not None and not error_df.empty:
+    fig_upset = create_upset_plot(error_df)
+    st.plotly_chart(fig_upset, use_container_width=True)
+else:
+    st.success("✅ Keine Fehler — UpSet Plot nicht notwendig.")
+
+# ── Section D: Pset Matrix ──────────────────────────────────────────────────
 st.divider()
 st.subheader("Pset-Verfügbarkeitsmatrix")
 st.caption("Grün = Pset vorhanden, Rot = fehlt")

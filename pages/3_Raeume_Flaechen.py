@@ -4,7 +4,10 @@ import numpy as np
 from streamlit_plotly_events import plotly_events
 from src.state_manager import init_session_state, get_space_df, get_element_df
 from src.filters import render_sidebar, render_cross_filter_reset
-from src.chart_factory import create_room_boxplot, create_room_stacked_bar, create_room_histogram
+from src.chart_factory import (
+    create_room_boxplot, create_room_stacked_bar, create_room_histogram,
+    create_room_sunburst, create_room_scatter, create_room_bubble,
+)
 
 st.set_page_config(page_title="Räume & Flächen – IFC Analytics", page_icon="🏠", layout="wide")
 init_session_state()
@@ -99,7 +102,25 @@ if selected_hist:
             st.session_state.cf_page3_size_bin = new_bin
             st.rerun()
 
-# ── Section D: Detail Table ────────────────────────────────────────────────
+# ── Section D: Räumliche Analyse (Scatter, Bubble, Sunburst) ──────────────
+st.divider()
+st.subheader("Räumliche Analyse")
+
+col_scat, col_bub = st.columns(2)
+with col_scat:
+    fig_scatter = create_room_scatter(space_df)
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+with col_bub:
+    fig_bubble = create_room_bubble(space_df)
+    st.plotly_chart(fig_bubble, use_container_width=True)
+
+col_sun, _ = st.columns([2, 1])
+with col_sun:
+    fig_sunburst = create_room_sunburst(space_df)
+    st.plotly_chart(fig_sunburst, use_container_width=True)
+
+# ── Section E: Detail Table ────────────────────────────────────────────────
 st.subheader("Raumdetails")
 
 table_df = space_df.copy()

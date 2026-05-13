@@ -7,6 +7,8 @@ from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
     create_class_bar_horizontal, create_class_storey_stacked,
     create_material_quantity_bar, create_diverging_bar,
+    create_grouped_bar, create_element_treemap,
+    create_volume_violin, create_volume_histogram, create_raincloud_plot,
 )
 
 st.set_page_config(page_title="Bauteile & Mengen – IFC Analytics", page_icon="🧱", layout="wide")
@@ -105,7 +107,37 @@ with col_div:
         # Add title override
     plotly_events(fig_div, click_event=True, key="cf_p4_div_bar", override_height=380)
 
-# ── Section D: Quantity Takeoff Table ─────────────────────────────────────
+# ── Section D: Hierarchie & Vergleich ─────────────────────────────────────
+st.divider()
+st.subheader("Hierarchie & Vergleich")
+
+col_tree4, col_grp = st.columns(2)
+with col_tree4:
+    fig_etree = create_element_treemap(element_df)
+    st.plotly_chart(fig_etree, use_container_width=True)
+
+with col_grp:
+    fig_grp = create_grouped_bar(element_df, mode)
+    st.plotly_chart(fig_grp, use_container_width=True)
+
+# ── Section E: Volumenverteilung ───────────────────────────────────────────
+st.divider()
+st.subheader("Volumenverteilung")
+
+tab_vio, tab_hist4, tab_rain = st.tabs(["Violin", "Histogramm", "Raincloud"])
+with tab_vio:
+    fig_violin = create_volume_violin(element_df)
+    st.plotly_chart(fig_violin, use_container_width=True)
+
+with tab_hist4:
+    fig_vhist = create_volume_histogram(element_df)
+    st.plotly_chart(fig_vhist, use_container_width=True)
+
+with tab_rain:
+    fig_rain = create_raincloud_plot(element_df)
+    st.plotly_chart(fig_rain, use_container_width=True)
+
+# ── Section F: Quantity Takeoff Table ─────────────────────────────────────
 st.subheader("Mengenauswertung")
 
 table_df = _apply_cf(element_df.copy())

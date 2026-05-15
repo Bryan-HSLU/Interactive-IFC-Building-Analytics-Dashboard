@@ -3,7 +3,7 @@ from src.state_manager import init_session_state
 
 st.set_page_config(
     page_title="IFC Building Analytics",
-    page_icon="🏗️",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -19,7 +19,7 @@ except FileNotFoundError:
 # Sidebar content when no file is loaded
 if not st.session_state.get("ifc_parsed"):
     with st.sidebar:
-        st.markdown("# 🏗️ IFC Analytics")
+        st.markdown("# IFC Analytics")
         st.info("Lade eine IFC-Datei auf **Seite 1** hoch, um zu beginnen.")
 
 st.title("IFC Building Analytics Dashboard")

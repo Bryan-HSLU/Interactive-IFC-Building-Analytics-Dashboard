@@ -9,7 +9,7 @@ from src.chart_factory import (
     create_room_sunburst, create_room_scatter, create_room_bubble,
 )
 
-st.set_page_config(page_title="Räume & Flächen – IFC Analytics", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="Räume & Flächen – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -24,17 +24,17 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("⚠️ Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
+    st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
     st.stop()
 
 space_df = get_space_df(filtered=True)
 
 if space_df is None or space_df.empty:
-    st.title("🏠 Räume & Flächen")
+    st.title("Räume & Flächen")
     st.warning("Keine Räume (IfcSpace) im Modell gefunden. Diese Seite ist nicht verfügbar.")
     st.stop()
 
-st.title("🏠 Räume & Flächen")
+st.title("Räume & Flächen")
 
 # ── Cross-filter reset ─────────────────────────────────────────────────────
 CF_KEYS = ["cf_page3_usage", "cf_page3_storey", "cf_page3_size_bin"]
@@ -52,7 +52,7 @@ kpi[3].metric("Geschosse", f"{space_df['storey'].nunique():,}" if "storey" in sp
 kpi[4].metric("Nutzungstypen", f"{space_df['usage'].nunique():,}" if "usage" in space_df.columns else "–")
 
 if rooms_without_area > 0:
-    st.caption(f"ℹ️ {rooms_without_area} Räume ohne Flächenangabe (nicht in Charts dargestellt)")
+    st.caption(f"{rooms_without_area} Räume ohne Flächenangabe (nicht in Charts dargestellt)")
 
 # ── Section B: Distribution Analysis ──────────────────────────────────────
 col_left, col_right = st.columns(2)
@@ -142,7 +142,7 @@ if cf_size_bin and "area_m2" in table_df.columns:
     ]
 
 # Search filter
-search = st.text_input("🔍 Suche (Raumname)", key="search_rooms", placeholder="z.B. Büro, Flur…")
+search = st.text_input("Suche (Raumname)", key="search_rooms", placeholder="z.B. Büro, Flur…")
 if search:
     mask = table_df.get("name", pd.Series(dtype=str)).astype(str).str.contains(search, case=False, na=False)
     if "long_name" in table_df.columns:

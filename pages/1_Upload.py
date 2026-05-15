@@ -3,7 +3,7 @@ import tempfile
 import os
 from src.state_manager import init_session_state, store_parsed_data
 
-st.set_page_config(page_title="Upload – IFC Analytics", page_icon="📁", layout="wide")
+st.set_page_config(page_title="Upload – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -12,7 +12,7 @@ try:
 except FileNotFoundError:
     pass
 
-st.title("📁 Upload & Projektmodus")
+st.title("Upload & Projektmodus")
 
 # ── Section A: Upload & Mode Selection ────────────────────────────────────
 uploaded_file = st.file_uploader(
@@ -30,7 +30,7 @@ with col1:
     bg_neubau = "#EBF5FB" if neubau_selected else "#FAFAFA"
     st.markdown(
         f"""<div style="border:{border_neubau};border-radius:8px;padding:16px;background:{bg_neubau};cursor:pointer;">
-        <h3 style="margin:0">🟦 Neubau</h3>
+        <h3 style="margin:0">Neubau</h3>
         <p style="margin:8px 0 0 0;color:#555;">Alle Elemente werden als Neubau behandelt.<br>Keine Statusauswertung aus IFC-Psets.</p>
         </div>""",
         unsafe_allow_html=True,
@@ -45,7 +45,7 @@ with col2:
     bg_umbau = "#FDEBD0" if umbau_selected else "#FAFAFA"
     st.markdown(
         f"""<div style="border:{border_umbau};border-radius:8px;padding:16px;background:{bg_umbau};cursor:pointer;">
-        <h3 style="margin:0">🟧 Umbau / Sanierung</h3>
+        <h3 style="margin:0">Umbau / Sanierung</h3>
         <p style="margin:8px 0 0 0;color:#555;">Status wird aus IFC-Psets gelesen.<br>Fallback auf "Bestand" wenn keine Daten vorhanden.</p>
         </div>""",
         unsafe_allow_html=True,
@@ -74,7 +74,7 @@ if st.session_state.get("mode_project") == "umbau":
         )
         st.session_state.mode_pset_property = pset_prop
     pset_config = {"pset_name": pset_name, "pset_property": pset_prop}
-    st.info("ℹ️ Wenn keine Statusdaten gefunden werden, werden alle Elemente als **Bestand** behandelt.")
+    st.info("Wenn keine Statusdaten gefunden werden, werden alle Elemente als **Bestand** behandelt.")
 else:
     pset_config = {
         "pset_name": st.session_state.get("mode_pset_name", "Pset_RevitElement"),
@@ -88,12 +88,12 @@ file_ready = uploaded_file is not None
 st.divider()
 btn_disabled = not (file_ready and mode_ready)
 if not file_ready:
-    st.caption("⬆️ Bitte zuerst eine IFC-Datei hochladen.")
+    st.caption("Bitte zuerst eine IFC-Datei hochladen.")
 if not mode_ready:
-    st.caption("⬆️ Bitte einen Projektmodus wählen.")
+    st.caption("Bitte einen Projektmodus wählen.")
 
 if st.button(
-    "🚀 Analyse starten",
+    "Analyse starten",
     disabled=btn_disabled,
     type="primary",
     use_container_width=True,
@@ -106,35 +106,35 @@ if st.button(
         warnings = []
 
         # Save to temp file
-        st.write("📂 Datei lesen…")
+        st.write("Datei lesen…")
         progress.progress(10)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
             tmp.write(uploaded_file.read())
             tmp_path = tmp.name
 
         try:
-            st.write("🔍 IFC-Schema erkennen…")
+            st.write("IFC-Schema erkennen…")
             progress.progress(20)
             from src.ifc_parser import parse_ifc_file
             parsed_data = parse_ifc_file(tmp_path)
 
             schema = parsed_data.get("schema", "Unbekannt")
-            st.write(f"✅ Schema erkannt: **{schema}**")
+            st.write(f"Schema erkannt: **{schema}**")
             progress.progress(35)
 
-            st.write("🏗️ Entities extrahieren…")
+            st.write("Entities extrahieren…")
             elem_count = len(parsed_data.get("elements", []))
             st.write(f"   → {elem_count} Bauelemente gefunden")
             progress.progress(50)
 
-            st.write("🏠 IfcSpace auslesen…")
+            st.write("IfcSpace auslesen…")
             space_count = len(parsed_data.get("spaces", []))
             if space_count == 0:
                 warnings.append("IfcSpace nicht gefunden — Raumseite (Seite 3) wird eingeschränkt verfügbar sein.")
             st.write(f"   → {space_count} Räume gefunden")
             progress.progress(65)
 
-            st.write("📊 Mengen berechnen & Status zuweisen…")
+            st.write("Mengen berechnen & Status zuweisen…")
             progress.progress(80)
 
             mode = st.session_state.get("mode_project", "neubau")
@@ -142,23 +142,23 @@ if st.button(
             st.session_state.ifc_file_path = tmp_path
 
             progress.progress(95)
-            st.write("✅ Qualitätsprüfung abgeschlossen")
+            st.write("Qualitätsprüfung abgeschlossen")
             progress.progress(100)
             status_box.update(label="Analyse abgeschlossen ✓", state="complete")
 
         except ValueError as e:
             status_box.update(label="Fehler bei der Analyse", state="error")
-            st.error(f"❌ {e}")
+            st.error(f"Fehler: {e}")
             os.unlink(tmp_path)
             st.stop()
         except Exception as e:
             status_box.update(label="Unerwarteter Fehler", state="error")
-            st.error(f"❌ Unerwarteter Fehler: {e}")
+            st.error(f"Unerwarteter Fehler: {e}")
             os.unlink(tmp_path)
             st.stop()
 
     for w in warnings:
-        st.warning(f"⚠️ {w}")
+        st.warning(w)
 
     st.rerun()
 
@@ -209,7 +209,7 @@ if st.session_state.get("ifc_parsed"):
         not_found = int((element_df["status"] == "Nicht gefunden").sum())
         if not_found > 0:
             st.warning(
-                f"⚠️ {not_found} Elemente ohne Statusdaten — auf **Seite 6** überprüfen."
+                f"{not_found} Elemente ohne Statusdaten — auf Seite 6 überprüfen."
             )
 
     # Sidebar

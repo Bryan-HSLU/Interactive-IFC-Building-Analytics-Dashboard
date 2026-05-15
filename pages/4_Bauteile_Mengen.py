@@ -11,7 +11,7 @@ from src.chart_factory import (
     create_volume_violin, create_volume_histogram, create_raincloud_plot,
 )
 
-st.set_page_config(page_title="Bauteile & Mengen – IFC Analytics", page_icon="🧱", layout="wide")
+st.set_page_config(page_title="Bauteile & Mengen – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -26,17 +26,17 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("⚠️ Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
+    st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
     st.stop()
 
 element_df = get_element_df(filtered=True)
 
 if element_df is None or element_df.empty:
-    st.title("🧱 Bauteile & Mengen")
+    st.title("Bauteile & Mengen")
     st.warning("Keine Elementdaten verfügbar.")
     st.stop()
 
-st.title("🧱 Bauteile & Mengen")
+st.title("Bauteile & Mengen")
 
 # Cross-filter reset
 CF_KEYS = ["cf_page4_class", "cf_page4_material"]
@@ -143,7 +143,7 @@ st.subheader("Mengenauswertung")
 table_df = _apply_cf(element_df.copy())
 
 # Search filter
-search = st.text_input("🔍 Suche (Typ oder Material)", key="search_elements", placeholder="z.B. Beton, Wand…")
+search = st.text_input("Suche (Typ oder Material)", key="search_elements", placeholder="z.B. Beton, Wand…")
 if search:
     mask = pd.Series([False] * len(table_df))
     for col_search in ["type_name", "material", "ifc_class"]:

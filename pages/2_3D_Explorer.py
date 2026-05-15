@@ -2,7 +2,7 @@ import streamlit as st
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar
 
-st.set_page_config(page_title="3D Explorer – IFC Analytics", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="3D Explorer – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -17,10 +17,10 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df, space_df, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("⚠️ Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
+    st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
     st.stop()
 
-st.title("🏗️ 3D Model Explorer")
+st.title("3D Model Explorer")
 
 col_viewer, col_panel = st.columns([7, 3])
 

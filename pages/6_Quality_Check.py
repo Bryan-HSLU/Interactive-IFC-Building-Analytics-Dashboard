@@ -10,7 +10,7 @@ from src.chart_factory import (
 )
 from src.quality_checker import build_pset_matrix
 
-st.set_page_config(page_title="Quality Check – IFC Analytics", page_icon="✅", layout="wide")
+st.set_page_config(page_title="Quality Check – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -25,18 +25,18 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("⚠️ Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
+    st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
     st.stop()
 
 element_df = get_element_df(filtered=True)
 error_df, quality_summary = get_quality_data()
 
 if not quality_summary:
-    st.title("✅ Quality Check")
+    st.title("Quality Check")
     st.warning("Keine Qualitätsdaten verfügbar.")
     st.stop()
 
-st.title("✅ Quality Check")
+st.title("Quality Check")
 
 # Cross-filter reset
 CF_KEYS = ["cf_page6_error_cat", "cf_page6_status_class"]
@@ -61,17 +61,17 @@ with col_traffic:
         if not show_always and count == 0:
             return
         if count == 0:
-            icon = "✅"
+            badge = "OK"
             color = "#D5F5E3"
         elif count <= 10:
-            icon = "🟡"
+            badge = "Warnung"
             color = "#FCF3CF"
         else:
-            icon = "🔴"
+            badge = "Kritisch"
             color = "#FADBD8"
         st.markdown(
             f'<div style="background:{color};border-radius:6px;padding:8px 12px;margin:4px 0;">'
-            f'<b>{icon} {label}</b>: {count}</div>',
+            f'<b>[{badge}] {label}</b>: {count}</div>',
             unsafe_allow_html=True,
         )
 
@@ -198,6 +198,6 @@ if error_df is not None and not error_df.empty:
 
     # Warning if status data missing (Umbau mode)
     if mode == "umbau" and error_counts.get("missing_status", 0) > 0:
-        st.warning("⚠️ Berechnungen auf Seite 5 sind möglicherweise unvollständig da Statusdaten fehlen.")
+        st.warning("Berechnungen auf Seite 5 sind möglicherweise unvollständig da Statusdaten fehlen.")
 else:
-    st.success("✅ Keine Fehler gefunden.")
+    st.success("Keine Fehler gefunden.")

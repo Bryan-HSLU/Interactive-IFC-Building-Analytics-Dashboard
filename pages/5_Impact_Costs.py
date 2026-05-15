@@ -11,7 +11,7 @@ from src.chart_factory import (
 from src.impact_calculator import get_impact_summary
 from src.constants import SIA_2032_LIMIT
 
-st.set_page_config(page_title="Impact & Costs – IFC Analytics", page_icon="🌿", layout="wide")
+st.set_page_config(page_title="Impact & Costs – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -26,18 +26,18 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("⚠️ Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
+    st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
     st.stop()
 
 element_df = get_element_df(filtered=True)
 space_df = get_space_df(filtered=True)
 
 if element_df is None or element_df.empty:
-    st.title("🌿 Impact & Costs")
+    st.title("Impact & Costs")
     st.warning("Keine Elementdaten verfügbar.")
     st.stop()
 
-st.title("🌿 Impact & Costs")
+st.title("Impact & Costs")
 
 # Cross-filter reset
 CF_KEYS = ["cf_page5_material", "cf_page5_treemap", "cf_page5_heatmap"]
@@ -49,9 +49,9 @@ summary = get_impact_summary(element_df, space_df, mode)
 # Coverage info
 coverage = summary.get("coverage_pct", 0)
 if coverage == 0:
-    st.warning("⚠️ Keine KBOB-Faktoren konnten zugeordnet werden. Überprüfen Sie die Materialnamen im Modell.")
+    st.warning("Keine KBOB-Faktoren konnten zugeordnet werden. Überprüfen Sie die Materialnamen im Modell.")
 elif coverage < 100:
-    st.info(f"ℹ️ {coverage:.0f}% der Elemente konnten KBOB-Faktoren zugeordnet werden.")
+    st.info(f"{coverage:.0f}% der Elemente konnten KBOB-Faktoren zugeordnet werden.")
 
 # Apply cross-filters to table df
 def _apply_cf(df):
@@ -179,7 +179,7 @@ with tab_zirk:
             zk[1].metric("Anteil rückbaubarer Elemente", f"{deconstruct_pct:.1f}%")
             zk[2].metric("Geschätzter Residualwert", f"CHF {cost_bestand:,.0f}")
 
-            st.caption("⚠️ Vereinfachte Schätzung auf Basis von Materialtypen und Statusangaben.")
+            st.caption("Vereinfachte Schätzung auf Basis von Materialtypen und Statusangaben.")
         else:
             st.warning("Keine Statusdaten für Zirkularitätsanalyse verfügbar.")
 

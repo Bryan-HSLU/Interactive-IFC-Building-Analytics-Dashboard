@@ -4,7 +4,7 @@ from streamlit_plotly_events import plotly_events
 from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
-    create_quality_gauge, create_error_bar,
+    create_error_bar,
     create_status_distribution, create_pset_matrix_heatmap,
     create_upset_plot,
 )
@@ -43,16 +43,23 @@ CF_KEYS = ["cf_page6_error_cat", "cf_page6_status_class"]
 render_cross_filter_reset("page6", CF_KEYS)
 
 # ── Section A: Quality Score ────────────────────────────────────────────────
-col_gauge, col_traffic = st.columns(2)
+col_score, col_traffic = st.columns(2)
 
 score = quality_summary.get("score", 0)
 error_counts = quality_summary.get("error_counts", {})
 total_elements = quality_summary.get("total_elements", 0)
 total_spaces = quality_summary.get("total_spaces", 0)
 
-with col_gauge:
-    fig_gauge = create_quality_gauge(score)
-    st.plotly_chart(fig_gauge, use_container_width=True)
+with col_score:
+    score_color = "#D6EAF8" if score >= 80 else "#FDEBD0" if score >= 50 else "#F9EBEA"
+    score_text_color = "#2980B9" if score >= 80 else "#E67E22"
+    st.markdown(
+        f'<div style="background:{score_color};border-radius:10px;padding:32px 24px;text-align:center;">'
+        f'<div style="font-size:3.5rem;font-weight:700;color:{score_text_color};">{score:.0f}%</div>'
+        f'<div style="font-size:1rem;color:#7F8C8D;margin-top:4px;">Modellqualität</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 with col_traffic:
     st.subheader("Qualitätsindikatoren")
@@ -62,16 +69,19 @@ with col_traffic:
             return
         if count == 0:
             badge = "OK"
-            color = "#D5F5E3"
+            color = "#D6EAF8"
+            weight = "600"
         elif count <= 10:
             badge = "Warnung"
             color = "#FCF3CF"
+            weight = "600"
         else:
             badge = "Kritisch"
-            color = "#FADBD8"
+            color = "#FDEBD0"
+            weight = "700"
         st.markdown(
             f'<div style="background:{color};border-radius:6px;padding:8px 12px;margin:4px 0;">'
-            f'<b>[{badge}] {label}</b>: {count}</div>',
+            f'<b style="font-weight:{weight};">[{badge}] {label}</b>: {count}</div>',
             unsafe_allow_html=True,
         )
 
@@ -130,17 +140,22 @@ with col_status:
 # ── Section C: UpSet Plot ───────────────────────────────────────────────────
 st.divider()
 st.subheader("Fehler-Schnittmengen (UpSet Plot)")
-st.caption("Welche Fehlerkombinationen treten gemeinsam auf?")
+st.caption(
+    "Welche Fehlerkombinationen treten gemeinsam auf? "
+    "Jede Spalte steht für eine Kombination von Fehlern. "
+    "Die Balken oben zeigen wie viele Elemente diese Kombination haben. "
+    "Die Punkte unten zeigen welche Fehlertypen kombiniert auftreten."
+)
 if error_df is not None and not error_df.empty:
     fig_upset = create_upset_plot(error_df)
     st.plotly_chart(fig_upset, use_container_width=True)
 else:
-    st.success("✅ Keine Fehler — UpSet Plot nicht notwendig.")
+    st.success("Keine Fehler — UpSet Plot nicht notwendig.")
 
 # ── Section D: Pset Matrix ──────────────────────────────────────────────────
 st.divider()
 st.subheader("Pset-Verfügbarkeitsmatrix")
-st.caption("Grün = Pset vorhanden, Rot = fehlt")
+st.caption("Blau = Pset vorhanden, Grau = fehlt")
 
 if not element_df.empty:
     pset_matrix = build_pset_matrix(element_df)

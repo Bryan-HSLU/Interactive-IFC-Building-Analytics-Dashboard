@@ -4,14 +4,14 @@ import pandas as pd
 
 def render_sidebar(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
     with st.sidebar:
-        st.markdown("# 🏗️ IFC Analytics")
+        st.markdown("# IFC Analytics")
 
         # Mode badge
         if mode:
             if mode == "neubau":
-                st.markdown("**Modus:** 🟦 Neubau")
+                st.markdown("**Modus:** Neubau")
             else:
-                st.markdown("**Modus:** 🟧 Umbau / Sanierung")
+                st.markdown("**Modus:** Umbau / Sanierung")
 
         # Quality badge
         quality_summary = st.session_state.get("quality_summary", {})
@@ -20,11 +20,11 @@ def render_sidebar(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
             total_errors = sum(error_counts.values())
             score = quality_summary.get("score", 0)
             if total_errors == 0:
-                st.markdown(f"**Qualität:** ✅ {score:.0f}%")
+                st.markdown(f"**Qualität:** OK — {score:.0f}%")
             elif total_errors <= 10:
-                st.markdown(f"**Qualität:** ⚠️ {total_errors} Fehler ({score:.0f}%)")
+                st.markdown(f"**Qualität:** Warnung — {total_errors} Fehler ({score:.0f}%)")
             else:
-                st.markdown(f"**Qualität:** 🔴 {total_errors} Fehler ({score:.0f}%)")
+                st.markdown(f"**Qualität:** Kritisch — {total_errors} Fehler ({score:.0f}%)")
 
         st.divider()
 
@@ -68,6 +68,17 @@ def render_sidebar(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
                 )
                 st.session_state.filter_status = selected_status
 
+        # Active global filter summary
+        active = []
+        if st.session_state.get("filter_storeys"):
+            active.append(f"Geschoss: {', '.join(st.session_state.filter_storeys)}")
+        if st.session_state.get("filter_classes"):
+            active.append(f"Klasse: {', '.join(st.session_state.filter_classes)}")
+        if st.session_state.get("filter_status") and st.session_state.get("filter_status") != "Alle":
+            active.append(f"Status: {st.session_state.filter_status}")
+        if active:
+            st.sidebar.info("Aktive Filter:\n" + "\n".join(f"- {a}" for a in active))
+
         st.divider()
 
         # Unit settings
@@ -89,7 +100,6 @@ def render_cross_filter_reset(page_key: str, filter_keys: list):
             "cf_page4_material": "Material",
             "cf_page5_material": "Material",
             "cf_page5_treemap": "Kategorie",
-            "cf_page5_heatmap": "Zelle",
             "cf_page6_error_cat": "Fehlerkategorie",
             "cf_page6_status_class": "Statusklasse",
         }
@@ -99,8 +109,8 @@ def render_cross_filter_reset(page_key: str, filter_keys: list):
                 label = key_labels.get(k, k)
                 active_labels.append(f"{label}: **{val}**")
 
-        st.info(f"🔍 Aktiver Filter — {' | '.join(active_labels)}")
-        if st.button("🔄 Filter zurücksetzen", key=f"reset_{page_key}"):
+        st.info(f"Aktiver Filter — {' | '.join(active_labels)}")
+        if st.button("Filter zurücksetzen", key=f"reset_{page_key}"):
             for k in filter_keys:
                 st.session_state[k] = None
             st.rerun()

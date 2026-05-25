@@ -5,7 +5,7 @@ from streamlit_plotly_events import plotly_events
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
-    create_co2_bar, create_co2_treemap, create_cost_heatmap,
+    create_co2_bar, create_co2_treemap, create_cost_bar,
     create_waterfall_co2, create_sankey_material, create_slope_co2,
 )
 from src.impact_calculator import get_impact_summary
@@ -40,7 +40,7 @@ if element_df is None or element_df.empty:
 st.title("Impact & Costs")
 
 # Cross-filter reset
-CF_KEYS = ["cf_page5_material", "cf_page5_treemap", "cf_page5_heatmap"]
+CF_KEYS = ["cf_page5_material", "cf_page5_treemap"]
 render_cross_filter_reset("page5", CF_KEYS)
 
 # Impact summary
@@ -82,6 +82,19 @@ with tab_co2:
         "Graue Energie/m²",
         f"{summary['energy_per_m2']:.1f} kWh/m²" if summary.get("energy_per_m2") else "–"
     )
+
+    # SIA 2032 annotation
+    if summary.get("co2e_per_m2"):
+        co2_m2 = summary["co2e_per_m2"]
+        pct = co2_m2 / SIA_2032_LIMIT * 100
+        sia_color = "#D6EAF8" if co2_m2 <= SIA_2032_LIMIT else "#FDEBD0"
+        sia_status = "Innerhalb" if co2_m2 <= SIA_2032_LIMIT else "Überschreitung"
+        st.markdown(
+            f'<div style="background:{sia_color};border-radius:6px;padding:8px 14px;margin:8px 0;">'
+            f'<b>SIA 2032:</b> {sia_status} des Grenzwerts — '
+            f'{co2_m2:.1f} / {SIA_2032_LIMIT:.0f} kg CO2e/m²·a = {pct:.0f}%</div>',
+            unsafe_allow_html=True,
+        )
 
     if mode == "umbau" and "status" in element_df.columns:
         sub = st.columns(2)
@@ -144,14 +157,8 @@ with tab_cost:
         kpi_c[2].metric("Kosten Neubau", f"CHF {cost_neubau:,.0f}")
 
     st.divider()
-    fig_heatmap = create_cost_heatmap(element_df)
-    sel_heat = plotly_events(fig_heatmap, click_event=True, key="cf_p5_heatmap", override_height=400)
-    if sel_heat:
-        # heatmap click returns x=class, y=storey
-        cell_label = f"{sel_heat[0].get('x','?')} / {sel_heat[0].get('y','?')}"
-        if cell_label != st.session_state.get("cf_page5_heatmap"):
-            st.session_state.cf_page5_heatmap = cell_label
-            st.rerun()
+    fig_cost_bar = create_cost_bar(element_df)
+    st.plotly_chart(fig_cost_bar, use_container_width=True)
 
 with tab_zirk:
     if mode != "umbau":
@@ -188,17 +195,6 @@ st.divider()
 st.subheader("Elementdetails")
 
 table_df = _apply_cf(element_df.copy())
-
-# Heatmap cross-filter: filter by storey/class
-cf_heat = st.session_state.get("cf_page5_heatmap")
-if cf_heat:
-    parts = cf_heat.split(" / ")
-    if len(parts) == 2:
-        cls, storey = parts
-        if cls != "?" and "ifc_class" in table_df.columns:
-            table_df = table_df[table_df["ifc_class"] == cls]
-        if storey != "?" and "storey" in table_df.columns:
-            table_df = table_df[table_df["storey"] == storey]
 
 display_cols = ["element_id", "ifc_class", "material", "volume_m3", "co2e_total", "grey_energy_kwh", "cost_chf"]
 if mode == "umbau" and "status" in table_df.columns:

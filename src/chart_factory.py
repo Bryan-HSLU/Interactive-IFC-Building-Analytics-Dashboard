@@ -269,13 +269,16 @@ def create_co2_bar(element_df: pd.DataFrame) -> go.Figure:
     agg = df.groupby("material")["co2e_total"].sum().reset_index()
     agg.columns = ["material", "co2e"]
     agg = agg.sort_values("co2e", ascending=True)
+    total_co2 = agg["co2e"].sum()
+    agg["pct"] = (agg["co2e"] / total_co2 * 100).round(1) if total_co2 > 0 else 0.0
 
     fig = go.Figure(go.Bar(
         x=agg["co2e"],
         y=agg["material"],
         orientation="h",
         marker_color=COLORS["primary"],
-        hovertemplate="<b>%{y}</b><br>CO2e: %{x:,.0f} kg<extra></extra>",
+        customdata=agg["pct"],
+        hovertemplate="<b>%{y}</b><br>CO2e: %{x:,.0f} kg<br>Anteil: %{customdata:.1f}%<extra></extra>",
     ))
     apply_default_layout(fig, "CO2e nach Materialgruppe")
     fig.update_layout(xaxis_title="CO2e (kg)", yaxis_title="")
@@ -322,7 +325,7 @@ def create_co2_treemap(element_df: pd.DataFrame) -> go.Figure:
         branchvalues="total",
         hovertemplate="<b>%{label}</b><br>CO2e: %{value:,.0f} kg<br>Anteil: %{percentRoot:.1%}<extra></extra>",
         marker=dict(
-            colorscale=[[0, "#27AE60"], [0.5, "#F1C40F"], [1, "#E74C3C"]],
+            colorscale=[[0, "#FFF3CD"], [0.5, "#E67E22"], [1, "#784212"]],
             showscale=True,
             colorbar_title="CO2e (kg)",
         ),
@@ -357,6 +360,37 @@ def create_cost_heatmap(element_df: pd.DataFrame) -> go.Figure:
     ))
     apply_default_layout(fig, "Kosten nach Geschoss × IFC-Klasse (CHF)")
     fig.update_layout(xaxis_title="IFC-Klasse", yaxis_title="Geschoss")
+    return fig
+
+
+def create_cost_bar(element_df: pd.DataFrame) -> go.Figure:
+    if element_df.empty or "cost_chf" not in element_df.columns:
+        return _empty_fig("Keine Kostendaten verfügbar")
+
+    df = element_df.dropna(subset=["cost_chf"]).copy()
+    df["cost_chf"] = pd.to_numeric(df["cost_chf"], errors="coerce")
+    df = df[df["cost_chf"] > 0]
+    if df.empty:
+        return _empty_fig("Keine Kostenfaktoren zugeordnet")
+
+    agg = df.groupby("material")["cost_chf"].sum().reset_index()
+    agg.columns = ["material", "cost"]
+    agg = agg.sort_values("cost", ascending=True)
+    total = agg["cost"].sum()
+    agg["pct"] = (agg["cost"] / total * 100).round(1) if total > 0 else 0.0
+
+    colors = [COLORS["unknown"] if m == "Unbekannt" else CATEGORICAL_COLORS[0] for m in agg["material"]]
+
+    fig = go.Figure(go.Bar(
+        x=agg["cost"],
+        y=agg["material"],
+        orientation="h",
+        marker_color=colors,
+        customdata=agg["pct"],
+        hovertemplate="<b>%{y}</b><br>Kosten: CHF %{x:,.0f}<br>Anteil: %{customdata:.1f}%<extra></extra>",
+    ))
+    apply_default_layout(fig, "Kostentreiber nach Material")
+    fig.update_layout(xaxis_title="CHF", yaxis_title="")
     return fig
 
 
@@ -463,7 +497,7 @@ def create_pset_matrix_heatmap(pset_matrix: pd.DataFrame) -> go.Figure:
         z=z,
         x=pset_matrix.columns.tolist(),
         y=pset_matrix.index.tolist(),
-        colorscale=[[0, "#E74C3C"], [1, "#27AE60"]],
+        colorscale=[[0, "#ECF0F1"], [1, "#2980B9"]],
         showscale=False,
         hovertemplate="Klasse: %{y}<br>Pset: %{x}<br>%{text}<extra></extra>",
         text=[["Vorhanden" if v else "Fehlt" for v in row] for row in z],

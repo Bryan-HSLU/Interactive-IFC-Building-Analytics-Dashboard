@@ -1,36 +1,36 @@
 COLORS = {
-    "neubau": "#2ECC71",
-    "abbruch": "#E74C3C",
-    "bestand": "#95A5A6",
-    "temporaer": "#F39C12",
+    "neubau": "#2980B9",    # Blue — construction/future
+    "abbruch": "#E67E22",   # Orange — demolition/warning
+    "bestand": "#95A5A6",   # Gray — existing/unchanged
+    "temporaer": "#8E44AD", # Purple — temporary/special
     "primary": "#2980B9",
     "neutral": "#BDC3C7",
     "unknown": "#95A5A6",
-    "error_ok": "#27AE60",
-    "error_warning": "#E67E22",
-    "error_critical": "#C0392B",
+    "error_ok": "#2980B9",      # Blue (was green — red/green removed)
+    "error_warning": "#E67E22", # Orange
+    "error_critical": "#E67E22",# Orange bold (differentiated by text weight)
     "text": "#2C3E50",
     "text_light": "#7F8C8D",
     "grid": "#ECF0F1",
 }
 
 STATUS_COLORS = {
-    "Neubau": "#2ECC71",
-    "Abbruch": "#E74C3C",
-    "Bestand": "#95A5A6",
-    "Temporär": "#F39C12",
+    "Neubau": "#2980B9",        # Blue
+    "Abbruch": "#E67E22",       # Orange
+    "Bestand": "#95A5A6",       # Gray
+    "Temporär": "#8E44AD",      # Purple
     "Nicht gefunden": "#BDC3C7",
 }
 
+# Max 7 distinct categories (Unterrichtsprinzip)
 CATEGORICAL_COLORS = [
-    "#2980B9",
-    "#E74C3C",
-    "#2ECC71",
-    "#F39C12",
-    "#9B59B6",
-    "#1ABC9C",
-    "#E67E22",
-    "#95A5A6",
+    "#5DADE2",  # Light blue (distinct from primary #2980B9)
+    "#E67E22",  # Orange
+    "#A569BD",  # Purple
+    "#1ABC9C",  # Teal
+    "#F4D03F",  # Yellow
+    "#EC407A",  # Pink
+    "#95A5A6",  # Gray (Sonstige/Unbekannt)
 ]
 
 CHART_DEFAULTS = {

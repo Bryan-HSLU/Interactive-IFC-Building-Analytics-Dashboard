@@ -1,7 +1,7 @@
 import streamlit as st
 import tempfile
 import os
-from src.state_manager import init_session_state, store_parsed_data
+from src.state_manager import init_session_state, store_parsed_data, get_quality_data
 
 st.set_page_config(page_title="Upload – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
@@ -144,7 +144,7 @@ if st.button(
             progress.progress(95)
             st.write("Qualitätsprüfung abgeschlossen")
             progress.progress(100)
-            status_box.update(label="Analyse abgeschlossen ✓", state="complete")
+            status_box.update(label="Analyse abgeschlossen", state="complete")
 
         except ValueError as e:
             status_box.update(label="Fehler bei der Analyse", state="error")
@@ -172,8 +172,20 @@ if st.session_state.get("ifc_parsed"):
     space_df = st.session_state.get("space_df")
     storey_df = st.session_state.get("storey_df")
 
+    # Mode badge
+    _mode = st.session_state.get("mode_project", "")
+    _mode_label = "Neubau" if _mode == "neubau" else "Umbau / Sanierung"
+    _mode_color = "#D6EAF8" if _mode == "neubau" else "#FDEBD0"
+    st.markdown(
+        f'<div style="display:inline-block;background:{_mode_color};border-radius:6px;'
+        f'padding:4px 12px;font-weight:600;margin-bottom:8px;">{_mode_label}</div>',
+        unsafe_allow_html=True,
+    )
+
     # KPI cards
-    kpi_cols = st.columns(5)
+    _, _quality_summary = get_quality_data()
+    _score = _quality_summary.get("score", 0) if _quality_summary else 0
+    kpi_cols = st.columns(6)
     with kpi_cols[0]:
         st.metric("Bauelemente", f"{metadata.get('element_count', 0):,}")
     with kpi_cols[1]:
@@ -184,6 +196,8 @@ if st.session_state.get("ifc_parsed"):
         st.metric("IFC-Schema", metadata.get("schema", "–"))
     with kpi_cols[4]:
         st.metric("Software", metadata.get("application", "–"))
+    with kpi_cols[5]:
+        st.metric("Modellqualität", f"{_score:.0f}%")
 
     # Metadata table
     st.subheader("Projektinformationen")

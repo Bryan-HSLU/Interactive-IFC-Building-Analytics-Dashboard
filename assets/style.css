@@ -48,9 +48,9 @@ footer { visibility: hidden; }
 }
 
 /* Quality badge colors */
-.badge-ok { color: #27AE60; font-weight: 600; }
+.badge-ok { color: #2980B9; font-weight: 600; }
 .badge-warning { color: #E67E22; font-weight: 600; }
-.badge-critical { color: #C0392B; font-weight: 600; }
+.badge-critical { color: #E67E22; font-weight: 700; }
 
 /* Sidebar quality indicator */
 .sidebar-badge {
@@ -60,9 +60,9 @@ footer { visibility: hidden; }
     font-size: 0.8em;
     font-weight: 600;
 }
-.sidebar-badge.ok { background: #D5F5E3; color: #27AE60; }
+.sidebar-badge.ok { background: #D6EAF8; color: #2980B9; }
 .sidebar-badge.warning { background: #FCF3CF; color: #E67E22; }
-.sidebar-badge.critical { background: #FADBD8; color: #C0392B; }
+.sidebar-badge.critical { background: #FDEBD0; color: #E67E22; font-weight: 700; }
 
 /* Dataframe styling */
 [data-testid="stDataFrame"] {

@@ -7,12 +7,6 @@ An interactive Streamlit dashboard for MEP planners and BIM coordinators to anal
 
 ---
 
-## Live Demo
-
-🌐 [interactive-ifc-building-analytics-dashboard.streamlit.app](https://interactive-ifc-building-analytics-dashboard.streamlit.app)
-
----
-
 ## Features
 
 | Page | Description | Interactivity |
@@ -63,15 +57,12 @@ The app opens at `http://localhost:8501`.
 
 ## Test Data
 
-A sample IFC file is included for testing:
+A sample IFC file is included in the `data/` folder for testing purposes.
 
-```
-data/sample_building.ifc
-```
-
-1. Open the app and go to **Page 1 · Upload**
-2. Upload `data/sample_building.ifc`
-3. Select project mode (**Neubau** or **Umbau**)
+**To get started:**
+1. Open the app and navigate to **Page 1 · Upload**
+2. Drag and drop the included sample IFC file (or any IFC file of your own)
+3. Select a project mode — **Neubau** (new construction) or **Umbau** (renovation)
 4. Navigate through all pages using the sidebar
 
 > The dashboard supports **IFC2x3** and **IFC4** files. IFC4x3 is not yet supported.

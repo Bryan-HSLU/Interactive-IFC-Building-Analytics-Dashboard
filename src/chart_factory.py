@@ -25,6 +25,15 @@ _MATERIAL_GROUP_COLORS = {
     "Andere":  "#BDC3C7",  # Neutrales Hellgrau
 }
 
+# ── Holz-Subgruppen: alle Varianten werden zu "Holz" zusammengefasst ──────────
+# Materialnamen die explizit als Holz-Gruppe erkannt werden sollen
+_HOLZ_TRIGGERS = [
+    "vollholz", "holzwerkstoff", "holz balken", "holzbalken",
+    "holz fassade", "holzfassade", "fassade holz",
+    "holz", "wood", "nadelholz", "laubholz",
+    "fichte", "tanne", "buche", "eiche", "lärche", "föhre",
+]
+
 def _classify_material_group(material_name: str) -> str:
     """Classify a raw material name into one of 6 semantic groups."""
     name = str(material_name).lower().strip()
@@ -268,48 +277,85 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return _empty_fig("Keine CO₂-Werte vorhanden")
 
-    agg = df.groupby("material")["co2e_total"].sum().reset_index()
+    # ── Schritt 1: Holz-Varianten zusammenfassen ──────────────────────────────
+    # Alle Holz-Subgruppen (Vollholz, Holzwerkstoff, Holz Balken, Fassade, etc.)
+    # werden auf den einheitlichen Namen "Holz" normiert.
+    def _normalize_to_holz(material_name: str) -> str:
+        name = str(material_name).lower().strip()
+        for trigger in _HOLZ_TRIGGERS:
+            if trigger in name:
+                return "Holz"
+        return material_name  # unveränderter Originalname
+
+    df["material_grouped"] = df["material"].apply(_normalize_to_holz)
+
+    # ── Schritt 2: Aggregieren nach normiertem Materialnamen ──────────────────
+    agg = df.groupby("material_grouped")["co2e_total"].sum().reset_index()
     agg.columns = ["material", "co2"]
-    agg = agg.sort_values("co2", ascending=True)
+
+    # ── Schritt 3: Materialien < 200 kg CO₂ als "Andere" zusammenfassen ───────
+    SCHWELLENWERT_KG = 200
+    mask_klein = agg["co2"] < SCHWELLENWERT_KG
+    andere_co2 = agg.loc[mask_klein, "co2"].sum()
+    agg_haupt = agg[~mask_klein].copy()
+
+    if andere_co2 > 0:
+        andere_row = pd.DataFrame([{"material": "Andere", "co2": andere_co2}])
+        # Falls "Andere" bereits in agg_haupt vorhanden (>= 200 kg), addieren
+        if "Andere" in agg_haupt["material"].values:
+            agg_haupt.loc[agg_haupt["material"] == "Andere", "co2"] += andere_co2
+        else:
+            agg_haupt = pd.concat([andere_row, agg_haupt], ignore_index=True)
+
+    agg = agg_haupt.copy()
+
+    # "Andere" ans Ende (oben im horizontalen Balkendiagramm = letzte Zeile)
+    is_andere = agg["material"] == "Andere"
+    andere_rows = agg[is_andere]
+    haupt_rows = agg[~is_andere].sort_values("co2", ascending=True)
+    agg = pd.concat([andere_rows, haupt_rows], ignore_index=True)
 
     avg_val = agg["co2"].mean()
 
-    # Sequential scale from low (Green) -> mid (Yellow) -> high (Red)
-    # Map each value to a color based on its position in the values range
+    # ── Schritt 4: Farben (Grün → Gelb → Rot) ────────────────────────────────
     vals = agg["co2"].tolist()
     min_v, max_v = min(vals), max(vals)
     span = (max_v - min_v) if max_v != min_v else 1.0
 
     colors = []
     for v in vals:
-        # Scale value from 0 to 1
         scaled = (v - min_v) / span
-        # Simple interpolation between low (#A8D5B5) -> mid (#F5E642) -> high (#D94F3D)
         if scaled < 0.5:
-            # Interpolate low to mid
             t = scaled / 0.5
             r = int(168 + t * (245 - 168))
             g = int(213 + t * (230 - 213))
             b = int(181 + t * (66 - 181))
         else:
-            # Interpolate mid to high
             t = (scaled - 0.5) / 0.5
             r = int(245 + t * (217 - 245))
             g = int(230 + t * (79 - 230))
             b = int(66 + t * (61 - 66))
         colors.append(f"rgb({r},{g},{b})")
 
+    # "Andere" immer grau einfärben
+    final_colors = []
+    for mat, col in zip(agg["material"].tolist(), colors):
+        if mat == "Andere":
+            final_colors.append("#BDC3C7")
+        else:
+            final_colors.append(col)
+
     fig = go.Figure(go.Bar(
         x=agg["co2"],
         y=agg["material"],
         orientation="h",
-        marker_color=colors,
+        marker_color=final_colors,
         text=[f"{v:,.0f} kg" for v in agg["co2"]],
         textposition="outside",
         hovertemplate="<b>%{y}</b><br>CO₂e-Last: %{x:,.0f} kg<extra></extra>",
     ))
 
-    # Add Reference Line at the average
+    # Referenzlinie beim Durchschnitt
     fig.add_vline(
         x=avg_val,
         line_dash="dash",

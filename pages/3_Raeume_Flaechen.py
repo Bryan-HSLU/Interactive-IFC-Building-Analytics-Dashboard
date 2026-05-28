@@ -8,7 +8,7 @@ from src.chart_factory import (
     create_room_boxplot, create_room_stacked_bar, create_room_histogram,
     create_room_scatter,
 )
-from src.ui_helpers import kpi_card
+from src.ui_helpers import kpi_card, apply_unit_conversion, unit_caption
 from src.constants import COLORS
 
 st.set_page_config(page_title="Räume & Flächen – IFC Analytics", page_icon=None, layout="wide")
@@ -29,7 +29,6 @@ if not st.session_state.get("ifc_parsed"):
     st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
     st.stop()
 
-# Globaler Filter (Sidebar) anwenden
 space_df = get_space_df(filtered=True)
 
 if space_df is None or space_df.empty:
@@ -39,42 +38,32 @@ if space_df is None or space_df.empty:
 
 st.title("Räume & Flächen")
 
+# Active units from sidebar
+_u_area   = st.session_state.get("unit_area",   "m\u00b2")
+_u_volume = st.session_state.get("unit_volume", "m\u00b3")
+_u_mass   = st.session_state.get("unit_mass",   "kg")
+
 
 # ── Helper: Raumname aus plotly_events-Scatter-Klick rekonstruieren ──────────────────
 def _room_name_from_scatter_event(event: dict, df: pd.DataFrame) -> str | None:
-    """
-    plotly_events gibt bei Scatter-Klick {curveNumber, pointNumber, x, y} zurueck.
-    create_room_scatter baut Traces in alphabetischer Reihenfolge der Nutzungstypen
-    ("Unbekannt" zuletzt). Wir replizieren diese Reihenfolge und lesen den
-    Raumnamen via pointNumber aus dem jeweiligen Trace-Subset.
-    """
     if df is None or df.empty or "area_m2" not in df.columns:
         return None
-
     y_col = next(
-        (c for c in ["height_m", "volume_m3"] if c in df.columns and df[c].notna().any()),
-        None,
+        (c for c in ["height_m", "volume_m3"] if c in df.columns and df[c].notna().any()), None
     )
     if y_col is None:
         return None
-
     sub = df.dropna(subset=["area_m2", y_col]).copy()
     sub["usage"] = sub["usage"].fillna("Unbekannt") if "usage" in sub.columns else "Unbekannt"
-
     usages = sorted(sub["usage"].unique(), key=lambda x: (x == "Unbekannt", x))
-
     curve_number = event.get("curveNumber", 0)
     point_number = event.get("pointNumber", 0)
-
     if curve_number >= len(usages):
         return None
-
     usage = usages[curve_number]
     trace_rows = sub[sub["usage"] == usage].reset_index(drop=True)
-
     if point_number >= len(trace_rows):
         return None
-
     row = trace_rows.iloc[point_number]
     return str(row["name"]) if "name" in trace_rows.columns else None
 
@@ -87,6 +76,7 @@ render_cross_filter_reset("page3", CF_KEYS)
 df_with_area = space_df.dropna(subset=["area_m2"]) if "area_m2" in space_df.columns else pd.DataFrame()
 rooms_without_area = len(space_df) - len(df_with_area)
 
+# KPI cards always in m² (base unit) – units affect only table
 kpi = st.columns(5)
 with kpi[0]:
     kpi_card("Räume gesamt", f"{len(space_df):,}")
@@ -128,7 +118,6 @@ with col_right:
     if selected_bar:
         clicked_storey = selected_bar[0].get("x") or selected_bar[0].get("y")
         if clicked_storey and clicked_storey != st.session_state.get("cf_page3_storey"):
-            # fix #6: nur lokalen Cross-Filter setzen, NICHT filter_storeys (globaler Sidebar-Filter)
             st.session_state.cf_page3_storey = clicked_storey
             st.session_state.cf_page3_room = None
             st.rerun()
@@ -169,7 +158,6 @@ sel_scatter = plotly_events(fig_scatter, click_event=True, key="cf_p3_scatter", 
 
 if sel_scatter:
     clicked_name = _room_name_from_scatter_event(sel_scatter[0], space_df)
-
     if clicked_name and clicked_name != cf_room:
         st.session_state.cf_page3_room = clicked_name
         if "usage" in space_df.columns:
@@ -184,10 +172,7 @@ if sel_scatter:
 # ── Section E: Detail Table ─────────────────────────────────────────────────────
 st.subheader("Raumdetails")
 
-# fix #6: table_df startet von space_df (bereits global gefiltert),
-# Cross-Filter (cf_page3_*) werden darauf aufgesetzt – kein Doppelfilter
 table_df = space_df.copy()
-
 cf_usage    = st.session_state.get("cf_page3_usage")
 cf_storey   = st.session_state.get("cf_page3_storey")
 cf_size_bin = st.session_state.get("cf_page3_size_bin")
@@ -212,9 +197,7 @@ if search:
 
 table_df = table_df.copy()
 if cf_room and "name" in table_df.columns:
-    table_df.insert(0, "", table_df["name"].astype(str).apply(
-        lambda n: "🟡" if n == cf_room else ""
-    ))
+    table_df.insert(0, "", table_df["name"].astype(str).apply(lambda n: "🟡" if n == cf_room else ""))
 
 display_cols = ["name", "storey", "usage", "area_m2", "volume_m3", "height_m"]
 if mode == "umbau" and "status" in table_df.columns:
@@ -233,13 +216,18 @@ for num_col in ["Fläche (m²)", "Volumen (m³)", "Höhe (m)"]:
     if num_col in display_df.columns:
         display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(2)
 
+# fix #7: Einheitenumrechnung auf Tabellenwerte anwenden
+display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
+
 if cf_room and "Raumname" in display_df.columns:
     is_selected = display_df["Raumname"].astype(str) == cf_room
     display_df = pd.concat([display_df[is_selected], display_df[~is_selected]], ignore_index=True)
 
+_cap = unit_caption(_u_area, _u_volume, _u_mass)
 st.caption(
     f"{len(display_df)} Räume angezeigt"
     + (f" — 🟡 = ausgewählter Raum" if cf_room else "")
+    + (f" | {_cap}" if _cap else "")
 )
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 

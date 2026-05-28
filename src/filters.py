@@ -75,6 +75,8 @@ def render_sidebar(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
         st.divider()
 
         st.subheader("Einheiten")
+        # fix #7: Hinweis dass Einheiten auf Tabellenwerte wirken
+        st.caption("Wirkt auf Tabellenwerte (nicht Charts)")
         st.session_state.unit_area = st.selectbox("Fl\u00e4che", ["m\u00b2", "cm\u00b2"], index=0, key="unit_area_sel")
         st.session_state.unit_volume = st.selectbox("Volumen", ["m\u00b3", "cm\u00b3"], index=0, key="unit_vol_sel")
         st.session_state.unit_mass = st.selectbox("Masse", ["kg", "t"], index=0, key="unit_mass_sel")
@@ -83,27 +85,25 @@ def render_sidebar(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
 def render_cross_filter_reset(page_key: str, filter_keys: list):
     active = any(st.session_state.get(k) for k in filter_keys)
     if active:
-        # fix #3: vollst\u00e4ndige key_labels inkl. aller CF-Keys
         key_labels = {
             "cf_page3_usage":        "Nutzung",
             "cf_page3_storey":       "Geschoss",
             "cf_page3_size_bin":     "Gr\u00f6ssenklasse",
-            "cf_page3_room":         "Raum",          # fix #3
+            "cf_page3_room":         "Raum",
             "cf_page4_class":        "IFC-Klasse",
             "cf_page4_material":     "Material",
             "cf_page5_material":     "Material",
             "cf_page5_treemap":      "Kategorie",
-            "cf_page5_heatmap":      "W\u00e4rmekarte",  # fix #3
+            "cf_page5_heatmap":      "W\u00e4rmekarte",
             "cf_page6_error_cat":    "Fehlerkategorie",
             "cf_page6_status_class": "Statusklasse",
-            "overview_storey":       "Geschoss (Overview)",  # fix #3
+            "overview_storey":       "Geschoss (Overview)",
         }
         active_labels = []
         for k in filter_keys:
             val = st.session_state.get(k)
             if val:
-                label = key_labels.get(k, k)  # fallback: raw key
-                # cf_page3_size_bin ist ein Tuple – lesbarer formatieren
+                label = key_labels.get(k, k)
                 if k == "cf_page3_size_bin" and isinstance(val, tuple):
                     display_val = f"~{val[0]:.0f} m\u00b2"
                 else:

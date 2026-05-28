@@ -9,7 +9,7 @@ from src.chart_factory import (
     create_waterfall_co2, create_sankey_material, create_slope_co2,
 )
 from src.impact_calculator import get_impact_summary
-from src.ui_helpers import kpi_card
+from src.ui_helpers import kpi_card, apply_unit_conversion, unit_caption
 from src.constants import SIA_2032_LIMIT, COLORS
 
 st.set_page_config(page_title="Impact & Costs – IFC Analytics", page_icon=None, layout="wide")
@@ -39,6 +39,11 @@ if element_df is None or element_df.empty:
     st.stop()
 
 st.title("Impact & Costs")
+
+# Active units from sidebar
+_u_area   = st.session_state.get("unit_area",   "m²")
+_u_volume = st.session_state.get("unit_volume", "m³")
+_u_mass   = st.session_state.get("unit_mass",   "kg")
 
 # Cross-filter reset
 CF_KEYS = ["cf_page5_material", "cf_page5_treemap"]
@@ -200,7 +205,7 @@ with tab_zirk:
             total = len(element_df)
             bestand = (element_df["status"] == "Bestand").sum()
             abbruch = (element_df["status"] == "Abbruch").sum()
-            neubau = (element_df["status"] == "Neubau").sum()
+            neubau  = (element_df["status"] == "Neubau").sum()
 
             reuse_pct = (bestand / total * 100) if total > 0 else 0
             deconstruct_pct = (abbruch / total * 100) if total > 0 else 0
@@ -245,5 +250,12 @@ for num_col in ["Volumen (m³)", "CO2e (kg)", "Graue Energie (kWh)", "Kosten (CH
     if num_col in display_df.columns:
         display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(1)
 
-st.caption(f"{len(display_df):,} Elemente angezeigt | Fehlende Faktoren werden als leer dargestellt")
+# fix #7: Einheitenumrechnung anwenden (CO2e-Spalte wird bewusst nicht konvertiert)
+display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
+
+_cap = unit_caption(_u_area, _u_volume, _u_mass)
+st.caption(
+    f"{len(display_df):,} Elemente angezeigt | Fehlende Faktoren werden als leer dargestellt"
+    + (f" | {_cap}" if _cap else "")
+)
 st.dataframe(display_df, use_container_width=True, hide_index=True)

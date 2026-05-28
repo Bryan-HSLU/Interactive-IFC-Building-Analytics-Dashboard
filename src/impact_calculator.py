@@ -118,27 +118,35 @@ def calculate_impacts(element_df: pd.DataFrame, factors_df: pd.DataFrame) -> pd.
     co2_list, energy_list, cost_list = [], [], []
 
     for _, row in df.iterrows():
-        material = str(row.get("material", "Unbekannt"))
-        volume = row.get("volume_m3")
-        factor = _match_material(material, factors_df)
+        # ── 1. Use embedded ArchiCAD values if available (primary source) ──
+        co2_archicad    = row.get("co2e_archicad")
+        energy_archicad = row.get("grey_energy_archicad")
 
-        if factor is not None and volume is not None:
-            try:
-                vol = float(volume)
-                if not np.isnan(vol) and vol > 0:
-                    co2    = _safe_mul(factor.get("co2e_kg_per_m3"), vol)
-                    energy = _safe_mul(factor.get("grey_energy_kwh_per_m3"), vol)
-                    cost   = _safe_mul(factor.get("cost_chf_per_m3"), vol)
-                else:
-                    co2, energy, cost = None, None, None
-            except Exception:
-                co2, energy, cost = None, None, None
-        else:
-            co2, energy, cost = None, None, None
+        co2_val    = _to_float(co2_archicad)
+        energy_val = _to_float(energy_archicad)
+        cost_val   = None  # ArchiCAD does not embed cost → always use KBOB
 
-        co2_list.append(co2)
-        energy_list.append(energy)
-        cost_list.append(cost)
+        # ── 2. KBOB fallback for missing values ────────────────────────────
+        if co2_val is None or energy_val is None:
+            material = str(row.get("material", "Unbekannt"))
+            volume   = row.get("volume_m3")
+            factor   = _match_material(material, factors_df)
+
+            if factor is not None and volume is not None:
+                try:
+                    vol = float(volume)
+                    if not np.isnan(vol) and vol > 0:
+                        if co2_val is None:
+                            co2_val    = _safe_mul(factor.get("co2e_kg_per_m3"), vol)
+                        if energy_val is None:
+                            energy_val = _safe_mul(factor.get("grey_energy_kwh_per_m3"), vol)
+                        cost_val = _safe_mul(factor.get("cost_chf_per_m3"), vol)
+                except Exception:
+                    pass
+
+        co2_list.append(co2_val)
+        energy_list.append(energy_val)
+        cost_list.append(cost_val)
 
     df["co2e_total"]      = co2_list
     df["grey_energy_kwh"] = energy_list
@@ -147,7 +155,7 @@ def calculate_impacts(element_df: pd.DataFrame, factors_df: pd.DataFrame) -> pd.
 
 
 def get_match_coverage(element_df: pd.DataFrame) -> float:
-    """Returns percentage of elements with a matched CO2 factor (0–100)."""
+    """Returns percentage of elements with a CO2 value (ArchiCAD or KBOB)."""
     if element_df.empty or "co2e_total" not in element_df.columns:
         return 0.0
     matched = pd.to_numeric(element_df["co2e_total"], errors="coerce").notna().sum()
@@ -198,6 +206,17 @@ def get_impact_summary(impact_df: pd.DataFrame, space_df: pd.DataFrame, mode: st
         summary["energy_per_m2"]  = summary["grey_energy_total"] / ngf
 
     return summary
+
+
+def _to_float(val) -> float | None:
+    """Safely convert a value to float, return None if not possible or NaN."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if np.isnan(f) else f
+    except (TypeError, ValueError):
+        return None
 
 
 def _safe_mul(factor_val, volume: float):

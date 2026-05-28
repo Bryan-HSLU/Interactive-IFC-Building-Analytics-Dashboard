@@ -102,7 +102,6 @@ with col_err:
             "Kein Status": "missing_status",
         }
         mapped = label_map.get(clicked, clicked)
-        # Toggle off if same category clicked again
         if mapped != st.session_state.get("cf_page6_error_cat"):
             st.session_state.cf_page6_error_cat = mapped
             st.rerun()
@@ -168,7 +167,7 @@ if not element_df.empty:
     else:
         st.info("No Pset data available for matrix.")
 
-# ── Section E: Error Detail Table ──────────────────────────────────────────────
+# ── Section E: Error Detail Table ─────────────────────────────────────────────
 st.divider()
 st.subheader("Error Details")
 
@@ -202,7 +201,8 @@ if error_df is not None and not error_df.empty:
 
     if "Severity" in display_df.columns:
         st.dataframe(
-            display_df.style.applymap(_color_severity, subset=["Severity"]),
+            # Fix: applymap was removed in pandas 3.x, use map instead
+            display_df.style.map(_color_severity, subset=["Severity"]),
             use_container_width=True,
             hide_index=True,
         )

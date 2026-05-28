@@ -385,7 +385,8 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
         fig.add_trace(go.Scatter(
             x=sub["area_m2"], y=sub["co2_load"],
             mode="markers", name=usage,
-            marker=dict(color=color, size=10, opacity=0.85, line=dict(width=0.5, color="white")),
+            # Significantly larger (size=14), more opaque (0.95), and with a distinct dark outline (#2D2D2D, width=1.5) to make points pop!
+            marker=dict(color=color, size=14, opacity=0.95, line=dict(width=1.5, color="#2D2D2D")),
             text=names,
             customdata=sub["usage"].tolist(),
             hovertemplate="<b>%{text}</b><br>Kategorie: " + usage + "<br>Typ: %{customdata}<br>Fläche: %{x:.1f} m²<br>CO₂-Last: %{y:,.0f} kg<extra></extra>",
@@ -413,51 +414,55 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
         df["residual"] = df["co2_load"] - df["y_pred"]
         
         # Select positive residuals (above the trendline), sorted descending
-        outliers = df[df["residual"] > 0].sort_values("residual", ascending=False)
+        above_trend = df[df["residual"] > 0]
         
-        # Annotate top 3 outliers
-        for idx, row in outliers.head(3).iterrows():
-            room_name = row.get("name") or "Raum"
-            room_type = row.get("usage") or ""
-            label_text = f"{room_name} ({room_type})" if room_type else room_name
+        if not above_trend.empty:
+            std_residual = df["residual"].std()
+            if pd.isna(std_residual) or std_residual <= 0:
+                std_residual = 1.0
+                
+            # Filter for significant outliers: residual must be at least 1.2 * std_residual
+            # This mathematically prevents normal rooms (like WC or Technik) close to the trendline from being annotated!
+            outliers = above_trend[above_trend["residual"] > 1.2 * std_residual].sort_values("residual", ascending=False)
             
-            fig.add_annotation(
-                x=row["area_m2"],
-                y=row["co2_load"],
-                text=label_text,
-                showarrow=True,
-                arrowhead=2,
-                arrowcolor="#D94F3D",
-                arrowsize=1.0, # Premiumized slightly larger arrow
-                ax=60,   # offset slightly more to the right to avoid overlapping data points
-                ay=-40,  # offset slightly more upwards
-                font=dict(size=12, color="#2D2D2D", family="Inter, sans-serif"),
-                bgcolor="rgba(253, 237, 236, 0.95)",
-                bordercolor="#FADBD8",
-                borderwidth=1.5,
-                borderpad=5,
-            )
+            # Fallback if no point is statistically a strong outlier:
+            # We don't want to annotate normal points. But if there is a point that is extremely high in absolute CO2
+            # (e.g. > 400 kg), we can still annotate it.
+            if outliers.empty:
+                top_one = above_trend.sort_values("residual", ascending=False).head(1)
+                if not top_one.empty and top_one["residual"].iloc[0] > 100:
+                    outliers = top_one
+            else:
+                outliers = outliers.head(3) # Limit to top 3 actual outliers
+                
+            # Annotate these genuine outliers
+            for idx, row in outliers.iterrows():
+                room_name = row.get("name") or "Raum"
+                room_type = row.get("usage") or ""
+                label_text = f"{room_name} ({room_type})" if room_type else room_name
+                
+                fig.add_annotation(
+                    x=row["area_m2"],
+                    y=row["co2_load"],
+                    text=label_text,
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowcolor="#D94F3D",
+                    arrowsize=1.0,
+                    ax=60,   # offset slightly more to the right to avoid overlapping data points
+                    ay=-40,  # offset slightly more upwards
+                    font=dict(size=13, color="#2D2D2D", family="Inter, sans-serif"), # Slightly larger font inside annotation
+                    bgcolor="rgba(253, 237, 236, 0.95)",
+                    bordercolor="#FADBD8",
+                    borderwidth=1.5,
+                    borderpad=5,
+                )
 
     apply_default_layout(fig, "Raumfläche vs. CO₂-Last")
     fig.update_layout(
-        font=dict(size=14), # Globally larger font size for the scatter plot!
+        font=dict(size=14, family="Inter, sans-serif"), # Globally larger font size for the scatter plot!
         title=dict(
             font=dict(size=16, color=COLORS["text"]),
-        ),
-        xaxis=dict(
-            autorange=True, # Let it scale naturally to show all rooms (up to 180m²+)
-            title=dict(
-                text="Raumfläche (m²)",
-                font=dict(size=14, color=COLORS["text"])
-            ),
-            tickfont=dict(size=13, color=COLORS["text_light"])
-        ),
-        yaxis=dict(
-            title=dict(
-                text="CO₂-Last (kg CO₂eq)",
-                font=dict(size=14, color=COLORS["text"])
-            ),
-            tickfont=dict(size=13, color=COLORS["text_light"])
         ),
         legend=dict(
             orientation="h",
@@ -465,9 +470,25 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
             y=1.05,
             xanchor="center",
             x=0.5,
-            font=dict(size=13), # Larger legend font
+            font=dict(size=13, color=COLORS["text"]), # Larger legend font
         ),
         margin=dict(t=100, b=60, l=60, r=40), # larger top margin for title & legend
+    )
+    # Force larger font sizes directly on axes to override any layout defaults!
+    fig.update_xaxes(
+        autorange=True, # Let it scale naturally to show all rooms (up to 180m²+)
+        title=dict(
+            text="Raumfläche (m²)",
+            font=dict(size=14, color=COLORS["text"])
+        ),
+        tickfont=dict(size=13, color=COLORS["text_light"])
+    )
+    fig.update_yaxes(
+        title=dict(
+            text="CO₂-Last (kg CO₂eq)",
+            font=dict(size=14, color=COLORS["text"])
+        ),
+        tickfont=dict(size=13, color=COLORS["text_light"])
     )
     return fig
 

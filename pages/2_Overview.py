@@ -14,7 +14,6 @@ from src.impact_calculator import get_impact_summary
 from src.ui_helpers import kpi_card
 from src.constants import SIA_2032_LIMIT, COLORS, STATUS_COLORS
 
-st.set_page_config(page_title="Overview – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -54,7 +53,7 @@ st.markdown(
 st.title("Overview")
 
 # ── KPI Row ───────────────────────────────────────────────────────────────────────
-kpi_summary = get_quality_data()
+# Fix: single call to get_quality_data() — previous code called it twice
 _, quality_summary = get_quality_data()
 summary = get_impact_summary(element_df, space_df, mode)
 score = quality_summary.get("score", 0) if quality_summary else 0
@@ -109,8 +108,9 @@ with col_bubble:
     if space_df is not None and not space_df.empty:
         sel_storey = st.session_state.get("overview_storey")
         df_bubble = space_df[space_df["storey"] == sel_storey] if sel_storey and "storey" in space_df.columns else space_df
+        # Fix: removed broken inline reset link — real reset button is shown below
         if sel_storey:
-            st.caption(f"🔍 Gefiltert: Geschoss **{sel_storey}** — [zurücksetzen](?)")
+            st.caption(f"🔍 Gefiltert: Geschoss **{sel_storey}**")
         fig_bubble = create_room_bubble(df_bubble)
         st.plotly_chart(fig_bubble, use_container_width=True, key="ov_bubble")
     else:

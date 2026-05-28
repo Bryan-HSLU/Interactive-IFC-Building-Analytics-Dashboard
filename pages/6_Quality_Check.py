@@ -11,7 +11,6 @@ from src.chart_factory import (
 )
 from src.quality_checker import build_pset_matrix
 
-st.set_page_config(page_title="Quality Check – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -52,7 +51,6 @@ total_elements = quality_summary.get("total_elements", 0)
 total_spaces = quality_summary.get("total_spaces", 0)
 
 with col_score:
-    # Gauge chart instead of plain HTML div
     fig_gauge = create_quality_gauge(score)
     st.plotly_chart(fig_gauge, use_container_width=True)
 
@@ -103,8 +101,13 @@ with col_err:
             "Keine Nutzung": "missing_usage",
             "Kein Status": "missing_status",
         }
-        if clicked and label_map.get(clicked) != st.session_state.get("cf_page6_error_cat"):
-            st.session_state.cf_page6_error_cat = label_map.get(clicked, clicked)
+        mapped = label_map.get(clicked, clicked)
+        # Toggle off if same category clicked again
+        if mapped != st.session_state.get("cf_page6_error_cat"):
+            st.session_state.cf_page6_error_cat = mapped
+            st.rerun()
+        else:
+            st.session_state.cf_page6_error_cat = None
             st.rerun()
 
 with col_status:
@@ -116,8 +119,10 @@ with col_status:
             if clicked and clicked != st.session_state.get("cf_page6_status_class"):
                 st.session_state.cf_page6_status_class = clicked
                 st.rerun()
+            elif clicked and clicked == st.session_state.get("cf_page6_status_class"):
+                st.session_state.cf_page6_status_class = None
+                st.rerun()
     else:
-        # Neubau mode: Pset completeness per class as simple metric
         st.subheader("Pset Completeness by IFC Class")
         if not element_df.empty and "psets" in element_df.columns:
             pset_counts = element_df.groupby("ifc_class")["psets"].apply(

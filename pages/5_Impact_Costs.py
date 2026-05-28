@@ -12,7 +12,6 @@ from src.impact_calculator import get_impact_summary
 from src.ui_helpers import kpi_card, apply_unit_conversion, unit_caption
 from src.constants import SIA_2032_LIMIT, COLORS
 
-st.set_page_config(page_title="Impact & Costs – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -150,6 +149,9 @@ with tab_co2:
                 st.session_state.cf_page5_material = clicked
                 st.session_state.cf_page5_treemap = None
                 st.rerun()
+            elif clicked and clicked == st.session_state.get("cf_page5_material"):
+                st.session_state.cf_page5_material = None
+                st.rerun()
 
     with col_tree:
         fig_treemap = create_co2_treemap(element_df)
@@ -250,7 +252,6 @@ for num_col in ["Volumen (m³)", "CO2e (kg)", "Graue Energie (kWh)", "Kosten (CH
     if num_col in display_df.columns:
         display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(1)
 
-# fix #7: Einheitenumrechnung anwenden (CO2e-Spalte wird bewusst nicht konvertiert)
 display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
 
 _cap = unit_caption(_u_area, _u_volume, _u_mass)

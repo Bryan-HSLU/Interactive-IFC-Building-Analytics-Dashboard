@@ -12,7 +12,6 @@ from src.chart_factory import (
 )
 from src.ui_helpers import apply_unit_conversion, unit_caption
 
-st.set_page_config(page_title="Bauteile & Mengen – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -83,13 +82,25 @@ with col_left:
     sel_class = plotly_events(fig_class_bar, click_event=True, key="cf_p4_class_bar", override_height=380)
     if sel_class:
         clicked = sel_class[0].get("y") or sel_class[0].get("x")
+        # Toggle off if same class clicked again
         if clicked and clicked != st.session_state.get("cf_page4_class"):
             st.session_state.cf_page4_class = clicked
+            st.rerun()
+        elif clicked and clicked == st.session_state.get("cf_page4_class"):
+            st.session_state.cf_page4_class = None
             st.rerun()
 
 with col_right:
     fig_storey_stack = create_class_storey_stacked(element_df, storey_order)
-    plotly_events(fig_storey_stack, click_event=True, key="cf_p4_storey_stack", override_height=380)
+    # Fix: capture click events from stacked bar and apply as cross-filter on IFC class
+    sel_storey_stack = plotly_events(fig_storey_stack, click_event=True, key="cf_p4_storey_stack", override_height=380)
+    if sel_storey_stack:
+        clicked_class = sel_storey_stack[0].get("data", {}) or {}
+        # curveNumber maps to IFC class — use y-value if available
+        clicked_val = sel_storey_stack[0].get("y") or sel_storey_stack[0].get("x")
+        if clicked_val and clicked_val != st.session_state.get("cf_page4_class"):
+            st.session_state.cf_page4_class = clicked_val
+            st.rerun()
 
 # ── Section C: Material Quantities ────────────────────────────────────────────
 col_mat, col_div = st.columns(2)
@@ -103,6 +114,9 @@ with col_mat:
         clicked_mat = sel_mat[0].get("y") or sel_mat[0].get("x")
         if clicked_mat and clicked_mat != st.session_state.get("cf_page4_material"):
             st.session_state.cf_page4_material = clicked_mat
+            st.rerun()
+        elif clicked_mat and clicked_mat == st.session_state.get("cf_page4_material"):
+            st.session_state.cf_page4_material = None
             st.rerun()
 
 with col_div:
@@ -171,7 +185,6 @@ for num_col in ["Fläche (m²)", "Volumen (m³)", "Länge (m)"]:
     if num_col in display_df.columns:
         display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(2)
 
-# fix #7: Einheitenumrechnung anwenden
 display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
 
 _cap = unit_caption(_u_area, _u_volume, _u_mass)

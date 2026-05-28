@@ -429,27 +429,28 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                 arrowhead=2,
                 arrowcolor="#D94F3D",
                 arrowsize=0.8,
-                ax=45,
-                ay=-30,
-                font=dict(size=10, color="#2D2D2D", family="Inter, sans-serif"),
+                ax=50,   # offset to the right
+                ay=-35,  # offset upwards
+                font=dict(size=11, color="#2D2D2D", family="Inter, sans-serif"),
                 bgcolor="rgba(253, 237, 236, 0.95)",
                 bordercolor="#FADBD8",
                 borderwidth=1,
-                borderpad=3,
+                borderpad=4,
             )
 
     apply_default_layout(fig, "Raumfläche vs. CO₂-Last")
     fig.update_layout(
+        font=dict(size=14), # Globally larger font size for the scatter plot!
         xaxis_title="Raumfläche (m²)", 
         yaxis_title="CO₂-Last (kg CO₂eq)",
-        xaxis=dict(range=[0, 50]), # Set default zoom range to 0-50m² to avoid squishing
+        xaxis=dict(autorange=True), # Let it scale naturally to show all rooms (up to 180m²+)
         legend=dict(
             orientation="h",
             yanchor="bottom",
             y=1.05,
             xanchor="center",
             x=0.5,
-            font=dict(size=11),
+            font=dict(size=13), # Larger legend font
         ),
         margin=dict(t=80), # larger top margin for title & legend
     )

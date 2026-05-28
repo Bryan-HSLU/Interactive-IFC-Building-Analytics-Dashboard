@@ -29,6 +29,7 @@ if not st.session_state.get("ifc_parsed"):
     st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
     st.stop()
 
+# Globaler Filter (Sidebar) anwenden
 space_df = get_space_df(filtered=True)
 
 if space_df is None or space_df.empty:
@@ -127,8 +128,8 @@ with col_right:
     if selected_bar:
         clicked_storey = selected_bar[0].get("x") or selected_bar[0].get("y")
         if clicked_storey and clicked_storey != st.session_state.get("cf_page3_storey"):
+            # fix #6: nur lokalen Cross-Filter setzen, NICHT filter_storeys (globaler Sidebar-Filter)
             st.session_state.cf_page3_storey = clicked_storey
-            st.session_state.filter_storeys = [clicked_storey]
             st.session_state.cf_page3_room = None
             st.rerun()
 
@@ -180,13 +181,15 @@ if sel_scatter:
         st.session_state.cf_page3_room = None
         st.rerun()
 
-# ── Section E: Detail Table ───────────────────────────────────────────────────────
+# ── Section E: Detail Table ─────────────────────────────────────────────────────
 st.subheader("Raumdetails")
 
+# fix #6: table_df startet von space_df (bereits global gefiltert),
+# Cross-Filter (cf_page3_*) werden darauf aufgesetzt – kein Doppelfilter
 table_df = space_df.copy()
 
-cf_usage   = st.session_state.get("cf_page3_usage")
-cf_storey  = st.session_state.get("cf_page3_storey")
+cf_usage    = st.session_state.get("cf_page3_usage")
+cf_storey   = st.session_state.get("cf_page3_storey")
 cf_size_bin = st.session_state.get("cf_page3_size_bin")
 
 if cf_usage and "usage" in table_df.columns:

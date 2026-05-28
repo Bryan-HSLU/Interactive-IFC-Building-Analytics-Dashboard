@@ -305,7 +305,8 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
 
     df = element_df.copy()
 
-    # Map IFC classes to standard German building parts
+    # Map IFC classes to standard German building parts (Wand, Boden, Decke)
+    # Fenster and Tür are completely omitted from this stacked bar chart.
     def _map_class_to_part(cls):
         if cls in ("IfcWall", "IfcWallStandardCase", "IfcCurtainWall"):
             return "Wand"
@@ -313,10 +314,6 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             return "Decke"
         elif cls == "IfcSlab":
             return "Boden"
-        elif cls == "IfcWindow":
-            return "Fenster"
-        elif cls == "IfcDoor":
-            return "Tür"
         else:
             return "Sonstige"
 
@@ -324,7 +321,7 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
     df = df[df["part"] != "Sonstige"]
 
     if df.empty:
-        return _empty_fig("Keine Wände, Böden, Decken oder Öffnungen vorhanden")
+        return _empty_fig("Keine Wände, Böden oder Decken vorhanden")
 
     # Classify raw materials into semantic groups
     df["mat_group"] = df["material"].apply(_classify_material_group)
@@ -339,29 +336,20 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
     if pivot.empty:
         return _empty_fig("Keine Bauteilgruppen mit Daten")
 
-    # Drop "Fenster" and "Tür" if they are "leer" (i.e., they only have "Andere" material or no known materials)
-    for part in ["Fenster", "Tür"]:
-        if part in pivot.index:
-            known_sum = pivot.loc[part, [c for c in pivot.columns if c != "Andere"]].sum()
-            if known_sum == 0:
-                pivot = pivot.drop(index=part)
-
-    if pivot.empty:
-        return _empty_fig("Keine Bauteilgruppen mit ausreichenden Materialdaten")
-
     # Normalize to 100%
     pivot_pct = pivot.div(pivot.sum(axis=1), axis=0) * 100
 
-    # Consistent order of parts on X-Axis, only those with data
-    part_order = ["Wand", "Boden", "Decke", "Fenster", "Tür"]
+    # Consistent order of parts on X-Axis, only those with data (Wand, Boden, Decke)
+    part_order = ["Wand", "Boden", "Decke"]
     pivot_pct = pivot_pct.reindex([p for p in part_order if p in pivot_pct.index])
 
-    # Consistent order of material groups in legend
+    # Ensure all 6 material groups are ALWAYS present in the legend in the exact same order,
+    # even when a single material is selected and other groups have 0%.
     group_order = ["Beton", "Holz", "Metall", "Dämmung", "Glas", "Andere"]
-    ordered_groups = [g for g in group_order if g in pivot_pct.columns]
+    pivot_pct = pivot_pct.reindex(columns=group_order, fill_value=0.0)
 
     fig = go.Figure()
-    for grp in ordered_groups:
+    for grp in group_order:
         color = _MATERIAL_GROUP_COLORS[grp]
         fig.add_trace(go.Bar(
             x=pivot_pct.index,

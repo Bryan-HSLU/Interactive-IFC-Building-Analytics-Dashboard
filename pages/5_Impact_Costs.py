@@ -85,12 +85,14 @@ df_co2 = element_df.copy()
 fig_co2 = create_material_co2_bar(df_co2)
 
 ev_co2 = st.plotly_chart(fig_co2, on_select="rerun", key="p5_co2_bar_chart", use_container_width=True)
-if ev_co2 and ev_co2.selection.points:
+
+# Stable click handling: only act when the clicked material DIFFERS from
+# the current filter. Prevents infinite rerun loop.
+if ev_co2 and ev_co2.selection and ev_co2.selection.points:
     pt = ev_co2.selection.points[0]
-    clicked = pt.get("y") or pt.get("label") or ""
-    if clicked:
-        prev = st.session_state.get("cf_page5_material")
-        st.session_state.cf_page5_material = None if clicked == prev else clicked
+    clicked = pt.get("y") or pt.get("label") or None
+    if clicked and clicked != st.session_state.get("cf_page5_material"):
+        st.session_state.cf_page5_material = clicked
         st.rerun()
 
 # ── Detail Table ──────────────────────────────────────────────────────────────

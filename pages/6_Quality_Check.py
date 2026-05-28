@@ -96,7 +96,7 @@ else:
         st.subheader("Errors by Type")
         fig_err = create_error_bar(error_counts)
         ev_err = st.plotly_chart(fig_err, on_select="rerun", key="cf_p6_error_bar", use_container_width=True)
-        if ev_err and ev_err.selection.points:
+        if ev_err and ev_err.selection and ev_err.selection.points:
             pt = ev_err.selection.points[0]
             clicked = pt.get("x") or pt.get("y") or pt.get("label")
             label_map = {
@@ -107,8 +107,9 @@ else:
                 "Kein Status": "missing_status",
             }
             mapped = label_map.get(clicked, clicked)
-            st.session_state.cf_page6_error_cat = None if mapped == st.session_state.get("cf_page6_error_cat") else mapped
-            st.rerun()
+            if mapped and mapped != st.session_state.get("cf_page6_error_cat"):
+                st.session_state.cf_page6_error_cat = mapped
+                st.rerun()
 
     with col_pset:
         st.subheader("Pset Availability by IFC Class")

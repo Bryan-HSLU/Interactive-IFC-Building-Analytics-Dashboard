@@ -70,15 +70,14 @@ if has_spaces:
     fig_tree = create_room_treemap(space_df)
     ev_tree = st.plotly_chart(fig_tree, on_select="rerun", key="ov_treemap", use_container_width=True)
     
-    # Master filter logic
-    if ev_tree and ev_tree.selection.points:
+    # Master filter logic — only act when the clicked type DIFFERS from
+    # the current filter to prevent infinite rerun loops.
+    if ev_tree and ev_tree.selection and ev_tree.selection.points:
         pt = ev_tree.selection.points[0]
         clicked = pt.get("label") or pt.get("id") or ""
         if clicked and clicked not in ("Gesamt", "root", "Total"):
-            # Set global cross-filter for rooms
-            prev = st.session_state.get("cf_page3_usage")
-            st.session_state.cf_page3_usage = None if clicked == prev else clicked
-            st.info(f"Aktiver Filter für Räume gesetzt: **{clicked}** (Wird auf Seite 3 angewendet)")
-            st.rerun()
+            if clicked != st.session_state.get("cf_page3_usage"):
+                st.session_state.cf_page3_usage = clicked
+                st.rerun()
 else:
     st.info("Dieses Modell enthält keine Räume (IfcSpace) für eine Treemap-Flächenverteilung.")

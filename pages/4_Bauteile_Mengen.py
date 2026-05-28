@@ -98,18 +98,21 @@ st.divider()
 # Always show ALL materials so the user can click to select/deselect
 
 st.subheader("Mengen nach Materialgruppe")
-st.caption("Klicken Sie auf einen Balken, um nach diesem Material zu filtern. Erneut klicken zum Aufheben.")
+st.caption("Klicken Sie auf einen Balken, um nach diesem Material zu filtern. Zum Aufheben nutzen Sie den Button oben.")
 unit = st.session_state.get("unit_volume", "m³")
 fig_mat = create_material_volume_bar(element_df_all, unit)
 fig_mat.update_layout(height=500)
 
 ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True)
-if ev_mat and ev_mat.selection.points:
+
+# Stable click handling: only act when the clicked material DIFFERS from
+# the current filter. This prevents the infinite rerun loop caused by
+# Plotly's persistent widget selection state.
+if ev_mat and ev_mat.selection and ev_mat.selection.points:
     pt = ev_mat.selection.points[0]
-    clicked = pt.get("y") or pt.get("label") or ""
-    if clicked:
-        prev = st.session_state.get("cf_page4_material")
-        st.session_state.cf_page4_material = None if clicked == prev else clicked
+    clicked = pt.get("y") or pt.get("label") or None
+    if clicked and clicked != st.session_state.get("cf_page4_material"):
+        st.session_state.cf_page4_material = clicked
         st.rerun()
 
 st.divider()

@@ -1,5 +1,6 @@
 import ifcopenshell
 import pandas as pd
+import re
 from typing import Optional
 
 
@@ -49,6 +50,25 @@ def _build_storey_map(model) -> dict:
     return element_to_storey
 
 
+def _parse_archicad_co2(value) -> Optional[float]:
+    """Parse ArchiCAD CO2 string like '787.19 kgCO220820' → 787.19"""
+    if value is None:
+        return None
+    try:
+        # Already a number
+        return float(value)
+    except (TypeError, ValueError):
+        pass
+    # Extract leading number from string like "787.19 kgCO220820"
+    match = re.match(r"^\s*([\d]+(?:[.,]\d+)?)", str(value))
+    if match:
+        try:
+            return float(match.group(1).replace(",", "."))
+        except ValueError:
+            pass
+    return None
+
+
 def extract_elements(model, element_to_storey: dict) -> list[dict]:
     elements = []
     seen_ids = set()
@@ -64,6 +84,21 @@ def extract_elements(model, element_to_storey: dict) -> list[dict]:
                 quantities = extract_quantities(element)
                 materials = extract_materials(element)
 
+                # ── Extract embedded ArchiCAD CO2 & energy values ──────────
+                co2_archicad = None
+                energy_archicad = None
+                for pset_name, pset_data in psets.items():
+                    if co2_archicad is None:
+                        raw_co2 = pset_data.get("Enthaltenes CO2") or pset_data.get("Enthaltenes CO2 (kgCO2eq)")
+                        co2_archicad = _parse_archicad_co2(raw_co2)
+                    if energy_archicad is None:
+                        raw_energy = pset_data.get("Enthaltene Energie") or pset_data.get("Enthaltene Energie (kWh)")
+                        if raw_energy is not None:
+                            try:
+                                energy_archicad = float(raw_energy)
+                            except (TypeError, ValueError):
+                                pass
+
                 elements.append({
                     "element_id": element.id(),
                     "global_id": getattr(element, "GlobalId", ""),
@@ -77,6 +112,8 @@ def extract_elements(model, element_to_storey: dict) -> list[dict]:
                     "volume_m3": quantities.get("volume"),
                     "length_m": quantities.get("length"),
                     "weight_kg": quantities.get("weight"),
+                    "co2e_archicad": co2_archicad,
+                    "grey_energy_archicad": energy_archicad,
                 })
         except Exception:
             continue

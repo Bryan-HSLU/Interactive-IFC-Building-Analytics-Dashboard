@@ -39,15 +39,16 @@ total_co2 = pd.to_numeric(element_df["co2e_total"], errors="coerce").sum() if el
 
 def render_kpi(label: str, value: str):
     st.markdown(
-        f'<div style="background:#FFFFFF; border-top: 4px solid #2E86AB; border-radius: 4px; '
-        f'padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 12px; text-align: center;">'
-        f'<div style="font-size: 0.82rem; color: #8B8B8B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">{label}</div>'
-        f'<div style="font-size: 1.7rem; font-weight: 700; color: #2D2D2D; margin-top: 4px;">{value}</div>'
+        f'<div style="background:#FFFFFF; border-top: 4px solid #2E86AB; border-radius: 6px; '
+        f'padding: 12px 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 12px; text-align: center;">'
+        f'<div style="font-size: 0.8rem; color: #8B8B8B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{label}</div>'
+        f'<div style="font-size: 1.65rem; font-weight: 700; color: #2D2D2D; margin-top: 4px; white-space: nowrap;">{value}</div>'
         f'</div>',
         unsafe_allow_html=True
     )
 
-kcols = st.columns(5)
+# Custom column weights to give wider cards (like Gesamtfläche and Total CO2) more horizontal room
+kcols = st.columns([1.3, 1.2, 0.8, 0.8, 1.1])
 with kcols[0]:
     render_kpi("Gesamtfläche", f"{total_area:,.1f} m²" if total_area > 0 else "–")
 with kcols[1]:

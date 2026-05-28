@@ -74,3 +74,10 @@ footer { visibility: hidden; }
 .stProgress > div > div {
     background-color: #2980B9;
 }
+
+/* Force Streamlit wide layout to occupy 95% of the screen width for maximum space */
+.block-container {
+    max-width: 95% !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+}

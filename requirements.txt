@@ -1,6 +1,6 @@
-streamlit==1.45.1
+streamlit>=1.40.0
 plotly>=5.18.0,<6.0.0
-pandas==2.2.3
-numpy==2.2.6
-ifcopenshell==0.8.1
+pandas>=2.0.0,<3.0.0
+numpy>=1.26.0
+ifcopenshell>=0.8.0
 streamlit-plotly-events==0.0.6

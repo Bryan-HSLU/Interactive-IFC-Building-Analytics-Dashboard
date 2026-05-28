@@ -50,6 +50,19 @@ cf_usage = st.session_state.get("cf_page3_usage")
 cf_class = st.session_state.get("cf_page4_class")
 cf_mat   = st.session_state.get("cf_page4_material")
 
+# Helper to classify raw material name (must align with chart_factory.py)
+def _get_grouped_material_name(name: str) -> str:
+    name_lower = str(name).lower().strip()
+    if "holz" in name_lower or "dachbekleidung" in name_lower:
+        return "Holz"
+    elif "allgemein" in name_lower or "unbekannt" in name_lower:
+        return "Allgemein"
+    else:
+        return str(name).strip()
+
+if "material" in element_df.columns:
+    element_df["grouped_material"] = element_df["material"].apply(_get_grouped_material_name)
+
 if cf_usage:
     if space_df_raw is not None and not space_df_raw.empty:
         valid_storeys = space_df_raw[space_df_raw["usage"] == cf_usage]["storey"].unique()
@@ -62,11 +75,22 @@ if cf_usage:
 # (so user can always see & click ALL materials to toggle)
 element_df_all = element_df.copy()
 
+# Compute the top 5 grouped materials dynamically
+top_mats = []
+if not element_df_all.empty and "grouped_material" in element_df_all.columns:
+    vol_col = "volume_m3" if _u_volume in ("m³", "m\u00b3") else "area_m2"
+    if vol_col in element_df_all.columns:
+        df_valid = element_df_all.dropna(subset=[vol_col])
+        top_mats = df_valid.groupby("grouped_material")[vol_col].sum().nlargest(5).index.tolist()
+
 # Now apply material & class filter for KPIs, stacked bar, and table
 if cf_class and "ifc_class" in element_df.columns:
     element_df = element_df[element_df["ifc_class"] == cf_class]
-if cf_mat and "material" in element_df.columns:
-    element_df = element_df[element_df["material"] == cf_mat]
+if cf_mat and "grouped_material" in element_df.columns:
+    if cf_mat == "Andere":
+        element_df = element_df[~element_df["grouped_material"].isin(top_mats)]
+    else:
+        element_df = element_df[element_df["grouped_material"] == cf_mat]
 
 if element_df.empty:
     st.warning("Keine Elementdaten unter den aktiven Filtern verfügbar.")

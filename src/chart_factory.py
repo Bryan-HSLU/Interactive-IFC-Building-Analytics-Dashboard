@@ -123,12 +123,54 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
     if df.empty:
         return _empty_fig("Keine Mengendaten verfügbar")
 
-    agg = df.groupby("material")[col].sum().reset_index()
+    # Grouping rules:
+    # - all materials with "holz" or "dachbekleidung" in their name mapped to "Holz"
+    # - all materials with "allgemein" or "unbekannt" mapped to "Allgemein"
+    # - others kept as-is
+    def _group_material_name(name: str) -> str:
+        name_lower = str(name).lower().strip()
+        if "holz" in name_lower or "dachbekleidung" in name_lower:
+            return "Holz"
+        elif "allgemein" in name_lower or "unbekannt" in name_lower:
+            return "Allgemein"
+        else:
+            return str(name).strip()
+
+    df["grouped_material"] = df["material"].apply(_group_material_name)
+
+    # Aggregate by grouped material
+    agg = df.groupby("grouped_material")[col].sum().reset_index()
     agg.columns = ["material", "quantity"]
-    agg = agg.sort_values("quantity", ascending=True)
+
+    total_volume = agg["quantity"].sum()
+    agg = agg.sort_values("quantity", ascending=False)
+
+    # Keep top 5 materials, rest goes to Andere
+    if len(agg) > 5:
+        top_5 = agg.head(5)
+        rest = agg.iloc[5:]
+        rest_val = rest["quantity"].sum()
+        if rest_val > 0:
+            rest_row = pd.DataFrame([{"material": "Andere", "quantity": rest_val}])
+            agg = pd.concat([top_5, rest_row], ignore_index=True)
+        else:
+            agg = top_5
+
+    # Separate "Andere" to place it at the very bottom of the horizontal bar chart
+    is_andere = agg["material"] == "Andere"
+    andere_row = agg[is_andere]
+    main_rows = agg[~is_andere].sort_values("quantity", ascending=True)
+
+    if not andere_row.empty:
+        agg = pd.concat([andere_row, main_rows], ignore_index=True)
+    else:
+        agg = main_rows
 
     # Use single accent color #2E86AB (Stahlblau)
     colors = [COLORS["primary"]] * len(agg)
+    if "Andere" in agg["material"].values:
+        andere_idx = agg[agg["material"] == "Andere"].index[0]
+        colors[andere_idx] = "#BDC3C7" # Light gray for Andere
 
     fig = go.Figure(go.Bar(
         x=agg["quantity"],
@@ -139,8 +181,42 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
         textposition="outside",
         hovertemplate=f"<b>%{{y}}</b><br>Menge: %{{x:.1f}} {unit}<extra></extra>",
     ))
+
+    # Add annotation for the dominant material
+    if not main_rows.empty and total_volume > 0:
+        max_row = main_rows.loc[main_rows["quantity"].idxmax()]
+        max_material = max_row["material"]
+        max_qty = max_row["quantity"]
+        pct = (max_qty / total_volume) * 100
+
+        fig.add_annotation(
+            x=max_qty,
+            y=max_material,
+            text=f"macht {pct:.1f}% des Gesamtvolumens aus",
+            showarrow=True,
+            arrowhead=2,
+            arrowcolor="#D94F3D",
+            arrowsize=1,
+            arrowwidth=2,
+            ax=120, # offset to the right
+            ay=0,
+            font=dict(size=11, color="#2D2D2D", family="Inter, sans-serif"),
+            bgcolor="#FDEDEC",
+            bordercolor="#FADBD8",
+            borderwidth=1,
+            borderpad=4,
+            align="left",
+        )
+
     apply_default_layout(fig, f"Materialmengen im Gebäude ({unit})")
-    fig.update_layout(xaxis_title=unit, yaxis_title="")
+    
+    # Expand X-axis range slightly to make sure the text and annotation fit without clipping
+    max_val = agg["quantity"].max()
+    fig.update_layout(
+        xaxis_title=unit, 
+        yaxis_title="",
+        xaxis=dict(range=[0, max_val * 1.55]),
+    )
     return fig
 
 

@@ -193,13 +193,9 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
             x=max_qty,
             y=max_material,
             text=f"macht {pct:.1f}% des Gesamtvolumens aus",
-            showarrow=True,
-            arrowhead=2,
-            arrowcolor="#D94F3D",
-            arrowsize=1,
-            arrowwidth=2,
-            ax=120, # offset to the right
-            ay=0,
+            showarrow=False, # Removed arrow
+            xanchor="left",  # Align callout text to the left
+            xshift=10,       # Shift it slightly to the right of the bar end
             font=dict(size=11, color="#2D2D2D", family="Inter, sans-serif"),
             bgcolor="#FDEDEC",
             bordercolor="#FADBD8",
@@ -213,9 +209,18 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
     # Expand X-axis range slightly to make sure the text and annotation fit without clipping
     max_val = agg["quantity"].max()
     fig.update_layout(
+        title=dict(
+            text=f"Materialmengen im Gebäude ({unit})",
+            font=dict(size=14, color=COLORS["text"]),
+            x=0.0,
+            y=0.98,          # Positioned higher!
+            yanchor="top",
+            xanchor="left",
+        ),
         xaxis_title=unit, 
         yaxis_title="",
         xaxis=dict(range=[0, max_val * 1.55]),
+        margin=dict(t=80), # larger top margin for title
     )
     return fig
 
@@ -388,17 +393,25 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
 
         # Map IFC classes to standard German building parts (Wand, Boden, Decke)
         # Fenster and Tür are completely omitted from this stacked bar chart.
-        def _map_class_to_part(cls):
+        # We classify IfcSlab elements as 'Decke' if their type_name contains Decke/Dach/Roof/Ceiling,
+        # otherwise they are floor slabs (Boden).
+        def _map_class_to_part(row):
+            cls = row.get("ifc_class", "")
+            type_name = str(row.get("type_name", "")).lower()
+            
             if cls in ("IfcWall", "IfcWallStandardCase", "IfcCurtainWall"):
                 return "Wand"
             elif cls == "IfcRoof":
                 return "Decke"
             elif cls == "IfcSlab":
-                return "Boden"
+                if "decke" in type_name or "dach" in type_name or "roof" in type_name or "ceiling" in type_name:
+                    return "Decke"
+                else:
+                    return "Boden"
             else:
                 return "Sonstige"
 
-        df["part"] = df["ifc_class"].apply(_map_class_to_part)
+        df["part"] = df.apply(_map_class_to_part, axis=1)
         df = df[df["part"] != "Sonstige"]
 
         if df.empty:
@@ -433,9 +446,17 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
         ))
 
     fig.update_layout(barmode="stack")
-    # Apply default layout WITHOUT title as Streamlit already has a subheader above it
-    apply_default_layout(fig, None)
+    # Apply default layout with a clean title
+    apply_default_layout(fig, "Materialanteil pro Bauteilgruppe")
     fig.update_layout(
+        title=dict(
+            text="Materialanteil pro Bauteilgruppe",
+            font=dict(size=14, color=COLORS["text"]),
+            x=0.0,
+            y=0.98,          # Positioned higher!
+            yanchor="top",
+            xanchor="left",
+        ),
         xaxis_title="", yaxis_title="Materialanteil (%)",
         legend=dict(
             orientation="h",
@@ -445,6 +466,7 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             x=0.5,
             font=dict(size=11),
         ),
+        margin=dict(t=80), # larger top margin for title
     )
     return fig
 

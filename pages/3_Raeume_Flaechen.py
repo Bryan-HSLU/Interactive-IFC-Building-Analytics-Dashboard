@@ -40,8 +40,11 @@ render_cross_filter_reset("page3", CF_KEYS)
 
 cf_usage = st.session_state.get("cf_page3_usage")
 if cf_usage:
-    st.info(f"Aktivierter Filter (von Übersicht): Räume gefiltert nach Nutzung **{cf_usage}**")
-    space_df = space_df[space_df["usage"] == cf_usage]
+    if cf_usage == "Gesamt":
+        st.info("Aktivierter Filter (von Übersicht): **Gesamtgebäude** (alle Räume angezeigt)")
+    else:
+        st.info(f"Aktivierter Filter (von Übersicht): Räume gefiltert nach Nutzung **{cf_usage}**")
+        space_df = space_df[space_df["usage"] == cf_usage]
 
 if space_df.empty:
     st.warning("Keine Räume entsprechen dem aktiven Filter.")

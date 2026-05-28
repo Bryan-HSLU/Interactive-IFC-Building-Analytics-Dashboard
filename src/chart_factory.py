@@ -3,6 +3,7 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 import re
+import streamlit as st
 from src.constants import COLORS, STATUS_COLORS, ROOM_COLORS, MATERIAL_COLORS, CO2_SCALE
 
 
@@ -53,8 +54,25 @@ def _empty_fig(message: str) -> go.Figure:
 
 # ── 1️⃣ Helper to resolve consistent Room Colors ─────────────────────────────────
 
-def _get_room_color(usage: str) -> str:
+def _get_room_color(usage: str, force_orange: bool = False) -> str:
     usage_lower = str(usage).lower().strip()
+    if force_orange:
+        # Beautiful shades of orange for the "Gesamt" clicked state
+        if "gesamt" in usage_lower:
+            return "#D35400"      # Dark Orange for parent
+        elif "veloraum" in usage_lower:
+            return "#E67E22"      # Rich Orange
+        elif "bar" in usage_lower or "empfang" in usage_lower:
+            return "#F39C12"      # Gold Orange
+        elif "saal" in usage_lower:
+            return "#FF9800"      # Amber Orange
+        elif "restaurant" in usage_lower:
+            return "#FFA726"      # Soft Orange
+        elif "warteraum" in usage_lower:
+            return "#FFB74D"      # Pastel Orange
+        else:
+            return "#FFE0B2"      # Very Light Orange
+
     for key, color in ROOM_COLORS.items():
         if key.lower() in usage_lower:
             return color
@@ -85,22 +103,29 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
         rest_row = pd.DataFrame([{"usage": "Andere", "area_m2": rest_val}])
         agg = pd.concat([top, rest_row], ignore_index=True)
 
-    labels = ["Gesamt"]
+    # Read active room filter to determine if we color the entire treemap orange
+    cf_usage = st.session_state.get("cf_page3_usage")
+    force_orange = (cf_usage == "Gesamt")
+
+    # Parent labeled bold: "<b>Gesamt</b>"
+    labels = ["<b>Gesamt</b>"]
     parents = [""]
     values = [agg["area_m2"].sum()]
-    colors = ["#F5F5F5"]
+    colors = [_get_room_color("<b>Gesamt</b>", force_orange)]
 
     for _, row in agg.iterrows():
         labels.append(row["usage"])
-        parents.append("Gesamt")
+        parents.append("<b>Gesamt</b>")
         values.append(row["area_m2"])
-        colors.append(_get_room_color(row["usage"]))
+        colors.append(_get_room_color(row["usage"], force_orange))
 
     fig = go.Figure(go.Treemap(
         labels=labels,
         parents=parents,
         values=values,
         branchvalues="total",
+        textinfo="label+value",
+        texttemplate="<b>%{label}</b><br>%{value:.1f} m²",
         hovertemplate="<b>%{label}</b><br>Fläche: %{value:.1f} m²<br>Anteil: %{percentRoot:.1%}<extra></extra>",
         marker=dict(colors=colors, colorscale=None),
     ))

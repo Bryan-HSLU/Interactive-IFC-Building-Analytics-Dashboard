@@ -75,9 +75,16 @@ if has_spaces:
     if ev_tree and ev_tree.selection and ev_tree.selection.points:
         pt = ev_tree.selection.points[0]
         clicked = pt.get("label") or pt.get("id") or ""
-        if clicked and clicked not in ("Gesamt", "root", "Total"):
-            if clicked != st.session_state.get("cf_page3_usage"):
-                st.session_state.cf_page3_usage = clicked
-                st.rerun()
+        if clicked:
+            # Clean HTML tags like <b> from the label to get raw string
+            clicked_clean = clicked.replace("<b>", "").replace("</b>", "").strip()
+            if clicked_clean in ("Gesamt", "root", "Total"):
+                if st.session_state.get("cf_page3_usage") != "Gesamt":
+                    st.session_state.cf_page3_usage = "Gesamt"
+                    st.rerun()
+            else:
+                if clicked_clean != st.session_state.get("cf_page3_usage"):
+                    st.session_state.cf_page3_usage = clicked_clean
+                    st.rerun()
 else:
     st.info("Dieses Modell enthält keine Räume (IfcSpace) für eine Treemap-Flächenverteilung.")

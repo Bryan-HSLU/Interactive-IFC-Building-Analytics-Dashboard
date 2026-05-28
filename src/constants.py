@@ -33,14 +33,14 @@ CO2_SCALE = [
 
 # Consistent Room Type Palette
 ROOM_COLORS = {
-    "Büro": "#2E86AB",       # Stahlblau
-    "Flur": "#8B8B8B",       # Mittelgrau
-    "Korridor": "#8B8B8B",
-    "Erschliessung": "#8B8B8B",
-    "WC": "#C8A96E",         # Amber/Gold
-    "Technik": "#5C6E7E",    # Blaugrau
-    "Wohnen": "#A8D4E6",     # Hellblau
-    "Andere": "#CCCCCC",     # Hellgrau
+    "Veloraum": "#2E86AB",       # Blau
+    "Bar/Empfang": "#C8A96E",    # Beige
+    "Empfang": "#C8A96E",
+    "Bar": "#C8A96E",
+    "Saal": "#5C6E7E",           # Dunkelgrau-Blau
+    "Restaurant": "#A8D4E6",     # Hellblau
+    "Warteraum": "#F0C987",      # Gelb
+    "Andere": "#CCCCCC",         # Grau
     "Sonstige": "#CCCCCC",
     "Unbekannt": "#CCCCCC",
 }

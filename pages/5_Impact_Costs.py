@@ -40,13 +40,16 @@ cf_usage = st.session_state.get("cf_page3_usage")
 cf_mat = st.session_state.get("cf_page5_material")
 
 if cf_usage:
-    st.info(f"Aktivierter Filter (von Übersicht): Elemente gefiltert nach Räumen vom Typ **{cf_usage}**")
-    if space_df_raw is not None and not space_df_raw.empty:
-        valid_storeys = space_df_raw[space_df_raw["usage"] == cf_usage]["storey"].unique()
-        if len(valid_storeys) > 0:
-            element_df = element_df[element_df["storey"].isin(valid_storeys)]
-        else:
-            element_df = pd.DataFrame()
+    if cf_usage == "Gesamt":
+        st.info("Aktivierter Filter (von Übersicht): **Gesamtgebäude** (alle Elemente angezeigt)")
+    else:
+        st.info(f"Aktivierter Filter (von Übersicht): Elemente gefiltert nach Räumen vom Typ **{cf_usage}**")
+        if space_df_raw is not None and not space_df_raw.empty:
+            valid_storeys = space_df_raw[space_df_raw["usage"] == cf_usage]["storey"].unique()
+            if len(valid_storeys) > 0:
+                element_df = element_df[element_df["storey"].isin(valid_storeys)]
+            else:
+                element_df = pd.DataFrame()
 
 if element_df is None or element_df.empty:
     st.warning("Keine Elementdaten unter den aktiven Filtern verfügbar.")

@@ -45,10 +45,15 @@ error_counts = quality_summary.get("error_counts", {})
 total_elements = quality_summary.get("total_elements", 0)
 total_errors = sum(error_counts.values())
 
-# ── Layout: KPI-Card (links) | Balkendiagramm (rechts) ─────────────────
+
+def _fmt(n: int) -> str:
+    """Formatiert Zahl mit Apostroph als Tausendertrennzeichen: 1028 -> 1'028"""
+    return f"{n:,}".replace(",", "'")
+
+
 col_kpi, col_bar = st.columns([1, 2])
 
-# ── KPI-Card (unverandert) ────────────────────────────────────────
+# ── KPI-Card ─────────────────────────────────────────────────────────
 with col_kpi:
     bar_width = max(0.0, min(float(score), 100.0))
     bar_color = "#2E86AB" if bar_width >= 80 else ("#F39C12" if bar_width >= 50 else "#D94F3D")
@@ -61,7 +66,7 @@ with col_kpi:
             padding: 28px 24px 22px 24px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
             text-align: center;
-            height: 340px;
+            height: 480px;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -69,10 +74,10 @@ with col_kpi:
             <div style="color: #888; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px;">
                 MODELLQUALITÄT
             </div>
-            <div style="font-size: 64px; font-weight: 800; color: #1A1A2E; line-height: 1.0; margin-bottom: 20px;">
-                {score:.1f}<span style="font-size: 30px; font-weight: 600; color: #888;">%</span>
+            <div style="font-size: 72px; font-weight: 800; color: #1A1A2E; line-height: 1.0; margin-bottom: 24px;">
+                {score:.1f}<span style="font-size: 34px; font-weight: 600; color: #888;">%</span>
             </div>
-            <div style="background: #F0F0F0; border-radius: 999px; height: 12px; width: 100%; overflow: hidden;">
+            <div style="background: #F0F0F0; border-radius: 999px; height: 14px; width: 100%; overflow: hidden;">
                 <div style="
                     background: {bar_color};
                     width: {bar_width}%;
@@ -80,7 +85,7 @@ with col_kpi:
                     border-radius: 999px;
                 "></div>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+            <div style="display: flex; justify-content: space-between; margin-top: 6px;">
                 <span style="font-size: 11px; color: #AAA;">0%</span>
                 <span style="font-size: 11px; color: #AAA;">100%</span>
             </div>
@@ -95,21 +100,16 @@ with col_bar:
     st.caption("Anzahl Elemente mit fehlenden Datenfeldern, nach Schweregrad.")
 
     INDICATOR_CONFIG = [
-        ("missing_material", "Ohne Material",  "critical"),
-        ("missing_quantity", "Ohne Mengen",     "warning"),
-        ("missing_usage",    "Räume ohne Nutzung", "warning"),
-        ("missing_storey",   "Ohne Geschoss",   "critical"),
+        ("missing_material", "Ohne Material",       "critical"),
+        ("missing_quantity", "Ohne Mengen",          "warning"),
+        ("missing_usage",    "Räume ohne Nutzung",   "warning"),
+        ("missing_storey",   "Ohne Geschoss",        "critical"),
     ]
     if mode == "umbau":
         INDICATOR_CONFIG.append(("missing_status", "Ohne Status", "warning"))
 
-    COLOR_MAP = {
-        "critical": "#E07B39",
-        "warning":  "#D4A017",
-        "ok":       "#A8D5B5",
-    }
+    COLOR_MAP = {"critical": "#E07B39", "warning": "#D4A017", "ok": "#A8D5B5"}
 
-    # Nur Einträge mit Wert > 0, absteigend sortiert
     rows = []
     for key, label, severity in INDICATOR_CONFIG:
         val = error_counts.get(key, 0)
@@ -135,7 +135,7 @@ with col_bar:
 
     fig_hbar.update_layout(
         margin=dict(t=10, b=10, l=10, r=60),
-        height=300,
+        height=360,
         xaxis=dict(
             title="Anzahl Fehler",
             showgrid=True,
@@ -155,9 +155,9 @@ with col_bar:
     st.plotly_chart(fig_hbar, use_container_width=True)
 
     if total_errors == 0:
-        st.success(f"Modell vollständig – alle {total_elements:,} Elemente haben die Pflichtfelder befüllt.")
+        st.success(f"Modell vollständig – alle {_fmt(total_elements)} Elemente haben die Pflichtfelder befüllt.")
     else:
-        st.warning(f"{total_errors} Probleme in {total_elements:,} Elementen gefunden.")
+        st.warning(f"{_fmt(total_errors)} Probleme in {_fmt(total_elements)} Elementen gefunden.")
 
 st.divider()
 

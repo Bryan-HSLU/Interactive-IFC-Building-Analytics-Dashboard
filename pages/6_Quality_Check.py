@@ -43,43 +43,15 @@ render_cross_filter_reset("page6", CF_KEYS)
 score = quality_summary.get("score", 0)
 error_counts = quality_summary.get("error_counts", {})
 total_elements = quality_summary.get("total_elements", 0)
-
-# ── Donut-Chart Daten ─────────────────────────────────────────────
-INDICATOR_LABELS = {
-    "missing_material": "Ohne Material",
-    "missing_quantity": "Ohne Mengen",
-    "missing_usage":    "Räume ohne Nutzung",
-    "missing_storey":   "Ohne Geschoss",
-    "missing_status":   "Ohne Status",
-}
-# Blaue Abstufungen: dunkel → hell
-BLUE_SHADES = ["#1B3A6B", "#2E6BAD", "#4A9CC7", "#76C1E1", "#B0DFF0"]
-
-donut_labels, donut_values, donut_colors = [], [], []
-for i, (key, label) in enumerate(INDICATOR_LABELS.items()):
-    if key == "missing_status" and mode != "umbau":
-        continue
-    val = error_counts.get(key, 0)
-    if val > 0:
-        donut_labels.append(label)
-        donut_values.append(val)
-        donut_colors.append(BLUE_SHADES[i % len(BLUE_SHADES)])
-
-# Falls alles 0: kleinen Platzhalter "Kein Fehler"
-if not donut_values:
-    donut_labels = ["Kein Fehler"]
-    donut_values = [1]
-    donut_colors = ["#A8D5B5"]
-
 total_errors = sum(error_counts.values())
 
-# ── Layout: KPI-Card (links) | Donut-Chart (rechts) ────────────────────
-col_kpi, col_donut = st.columns([1, 2])
+# ── Layout: KPI-Card (links) | Balkendiagramm (rechts) ─────────────────
+col_kpi, col_bar = st.columns([1, 2])
 
+# ── KPI-Card (unverandert) ────────────────────────────────────────
 with col_kpi:
     bar_width = max(0.0, min(float(score), 100.0))
     bar_color = "#2E86AB" if bar_width >= 80 else ("#F39C12" if bar_width >= 50 else "#D94F3D")
-
     st.markdown(
         f"""
         <div style="
@@ -117,45 +89,70 @@ with col_kpi:
         unsafe_allow_html=True,
     )
 
-with col_donut:
+# ── Horizontales Balkendiagramm ──────────────────────────────────
+with col_bar:
     st.subheader("Qualitätsindikatoren")
-    st.caption("Verteilung der fehlenden Datenfelder nach Typ.")
+    st.caption("Anzahl Elemente mit fehlenden Datenfeldern, nach Schweregrad.")
 
-    fig_donut = go.Figure(go.Pie(
-        labels=donut_labels,
-        values=donut_values,
-        hole=0.55,
-        marker=dict(colors=donut_colors, line=dict(color="#FFFFFF", width=2)),
-        textinfo="label+value",
-        textfont=dict(size=13),
-        hovertemplate="<b>%{label}</b><br>%{value} Elemente<br>%{percent}<extra></extra>",
-        direction="clockwise",
-        sort=True,
+    INDICATOR_CONFIG = [
+        ("missing_material", "Ohne Material",  "critical"),
+        ("missing_quantity", "Ohne Mengen",     "warning"),
+        ("missing_usage",    "Räume ohne Nutzung", "warning"),
+        ("missing_storey",   "Ohne Geschoss",   "critical"),
+    ]
+    if mode == "umbau":
+        INDICATOR_CONFIG.append(("missing_status", "Ohne Status", "warning"))
+
+    COLOR_MAP = {
+        "critical": "#E07B39",
+        "warning":  "#D4A017",
+        "ok":       "#A8D5B5",
+    }
+
+    # Nur Einträge mit Wert > 0, absteigend sortiert
+    rows = []
+    for key, label, severity in INDICATOR_CONFIG:
+        val = error_counts.get(key, 0)
+        rows.append({"label": label, "value": val, "severity": severity})
+
+    rows_sorted = sorted(rows, key=lambda r: r["value"], reverse=True)
+
+    labels = [r["label"] for r in rows_sorted]
+    values = [r["value"] for r in rows_sorted]
+    colors = [COLOR_MAP[r["severity"]] if r["value"] > 0 else "#CCCCCC" for r in rows_sorted]
+
+    fig_hbar = go.Figure(go.Bar(
+        x=values,
+        y=labels,
+        orientation="h",
+        marker=dict(color=colors, line=dict(color="rgba(0,0,0,0)", width=0)),
+        text=[str(v) if v > 0 else "" for v in values],
+        textposition="outside",
+        textfont=dict(size=13, color="#1A1A2E"),
+        hovertemplate="<b>%{y}</b><br>%{x} Elemente<extra></extra>",
+        cliponaxis=False,
     ))
 
-    # Annotation in der Mitte
-    center_text = "Kein Fehler" if total_errors == 0 else f"{total_errors}<br><span style='font-size:11px'>Probleme</span>"
-    fig_donut.add_annotation(
-        text=f"<b>{total_errors}</b><br>Probleme" if total_errors > 0 else "<b>✓</b><br>Kein Fehler",
-        x=0.5, y=0.5,
-        font=dict(size=16, color="#1A1A2E"),
-        showarrow=False,
-    )
-
-    fig_donut.update_layout(
-        margin=dict(t=10, b=10, l=10, r=10),
+    fig_hbar.update_layout(
+        margin=dict(t=10, b=10, l=10, r=60),
         height=300,
-        showlegend=True,
-        legend=dict(
-            orientation="v",
-            x=1.02, y=0.5,
-            font=dict(size=12),
+        xaxis=dict(
+            title="Anzahl Fehler",
+            showgrid=True,
+            gridcolor="#F0F0F0",
+            zeroline=False,
+        ),
+        yaxis=dict(
+            autorange="reversed",
+            tickfont=dict(size=13),
         ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        bargap=0.35,
     )
 
-    st.plotly_chart(fig_donut, use_container_width=True)
+    st.plotly_chart(fig_hbar, use_container_width=True)
 
     if total_errors == 0:
         st.success(f"Modell vollständig – alle {total_elements:,} Elemente haben die Pflichtfelder befüllt.")

@@ -270,12 +270,33 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
 
 # ── 6️⃣ Stacked Bar Chart 100%: "Bauteil-Material-Verteilung" ──────────────────
 
-def _get_material_color(material: str) -> str:
-    mat_lower = str(material).lower().strip()
-    for key, color in MATERIAL_COLORS.items():
-        if key.lower() in mat_lower:
-            return color
-    return MATERIAL_COLORS["Andere"]
+# Semantic material groups with fixed colors
+_MATERIAL_GROUP_RULES = [
+    # (list of substrings to match, group name)
+    (["beton", "concrete", "stahlbeton", "fundament", "ortbeton", "sichtbeton", "fertigteil"], "Beton"),
+    (["holz", "wood", "nadelholz", "laubholz", "fichte", "tanne", "buche", "eiche", "lärche"], "Holz"),
+    (["stahl", "steel", "eisen", "metall", "metal", "aluminium", "alu", "kupfer", "zink", "blech", "träger"], "Metall"),
+    (["dämmung", "dämm", "isolation", "mineralwolle", "steinwolle", "glaswolle", "eps", "pur", "pir", "styropor", "wärmedämm"], "Dämmung"),
+    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg"], "Glas"),
+]
+
+_MATERIAL_GROUP_COLORS = {
+    "Beton":   "#909497",  # Grau
+    "Holz":    "#8E6F54",  # Braun
+    "Metall":  "#616A6B",  # Blaugrau/Slate
+    "Dämmung": "#F4D03F",  # Gelb
+    "Glas":    "#A9CCE3",  # Hellblau
+    "Andere":  "#BDC3C7",  # Hellgrau
+}
+
+def _classify_material_group(material_name: str) -> str:
+    """Classify a raw material name into one of 6 semantic groups."""
+    name = str(material_name).lower().strip()
+    for triggers, group in _MATERIAL_GROUP_RULES:
+        for t in triggers:
+            if t in name:
+                return group
+    return "Andere"
 
 
 def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
@@ -300,37 +321,69 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             return "Sonstige"
 
     df["part"] = df["ifc_class"].apply(_map_class_to_part)
-    df = df[df["part"] != "Sonstige"] # Only show Wand, Boden, Decke, Fenster, Tür
+    df = df[df["part"] != "Sonstige"]
 
     if df.empty:
         return _empty_fig("Keine Wände, Böden, Decken oder Öffnungen vorhanden")
 
+    # Classify raw materials into semantic groups
+    df["mat_group"] = df["material"].apply(_classify_material_group)
+
     # Group and calculate percentages
-    pivot = df.pivot_table(index="part", columns="material", aggfunc="size", fill_value=0)
+    pivot = df.pivot_table(index="part", columns="mat_group", aggfunc="size", fill_value=0)
     if pivot.empty:
         return _empty_fig("Keine Zuordnung möglich")
+
+    # Drop building parts (rows) with zero total elements
+    pivot = pivot.loc[pivot.sum(axis=1) > 0]
+    if pivot.empty:
+        return _empty_fig("Keine Bauteilgruppen mit Daten")
+
+    # Drop "Fenster" and "Tür" if they are "leer" (i.e., they only have "Andere" material or no known materials)
+    for part in ["Fenster", "Tür"]:
+        if part in pivot.index:
+            known_sum = pivot.loc[part, [c for c in pivot.columns if c != "Andere"]].sum()
+            if known_sum == 0:
+                pivot = pivot.drop(index=part)
+
+    if pivot.empty:
+        return _empty_fig("Keine Bauteilgruppen mit ausreichenden Materialdaten")
 
     # Normalize to 100%
     pivot_pct = pivot.div(pivot.sum(axis=1), axis=0) * 100
 
-    # Ensure consistent order of parts on X-Axis
+    # Consistent order of parts on X-Axis, only those with data
     part_order = ["Wand", "Boden", "Decke", "Fenster", "Tür"]
     pivot_pct = pivot_pct.reindex([p for p in part_order if p in pivot_pct.index])
 
+    # Consistent order of material groups in legend
+    group_order = ["Beton", "Holz", "Metall", "Dämmung", "Glas", "Andere"]
+    ordered_groups = [g for g in group_order if g in pivot_pct.columns]
+
     fig = go.Figure()
-    for mat in pivot_pct.columns:
-        color = _get_material_color(mat)
+    for grp in ordered_groups:
+        color = _MATERIAL_GROUP_COLORS[grp]
         fig.add_trace(go.Bar(
             x=pivot_pct.index,
-            y=pivot_pct[mat],
-            name=mat,
+            y=pivot_pct[grp],
+            name=grp,
             marker_color=color,
-            hovertemplate=f"<b>%{{x}}</b><br>{mat}: %{{y:.1f}}%<extra></extra>",
+            hovertemplate=f"<b>%{x}</b><br>{grp}: %{y:.1f}%<extra></extra>",
         ))
 
     fig.update_layout(barmode="stack")
     apply_default_layout(fig, "Materialverteilung nach Bauteilgruppe")
-    fig.update_layout(xaxis_title="", yaxis_title="Materialanteil (%)")
+    fig.update_layout(
+        xaxis_title="", yaxis_title="Materialanteil (%)",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.05,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11),
+        ),
+    )
     return fig
 
 

@@ -126,13 +126,13 @@ fig_stacked.update_layout(
     height=500,
     legend=dict(
         orientation="h",
-        yanchor="top",
-        y=-0.15,
+        yanchor="bottom",
+        y=1.05,
         xanchor="center",
         x=0.5,
         font=dict(size=11),
     ),
-    margin=dict(l=50, r=20, t=50, b=100),
+    margin=dict(l=50, r=20, t=80, b=50),
 )
 st.plotly_chart(fig_stacked, use_container_width=True, key="p4_stacked_bar")
 

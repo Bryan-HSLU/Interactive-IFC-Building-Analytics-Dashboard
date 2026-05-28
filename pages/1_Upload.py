@@ -62,23 +62,28 @@ if st.session_state.get("mode_project") == "umbau":
     with pcol1:
         pset_name = st.text_input(
             "Pset-Name für Status",
-            value=st.session_state.get("mode_pset_name", "Pset_RevitElement"),
+            value=st.session_state.get("mode_pset_name", ""),
+            placeholder="Leer = alle Psets durchsuchen",
             key="pset_name_input",
         )
         st.session_state.mode_pset_name = pset_name
     with pcol2:
         pset_prop = st.text_input(
             "Property-Name für Status",
-            value=st.session_state.get("mode_pset_property", "Phase Created"),
+            value=st.session_state.get("mode_pset_property", "Renovation Status"),
             key="pset_prop_input",
         )
         st.session_state.mode_pset_property = pset_prop
     pset_config = {"pset_name": pset_name, "pset_property": pset_prop}
-    st.info("Wenn keine Statusdaten gefunden werden, werden alle Elemente als **Bestand** behandelt.")
+    st.info(
+        "Erwartete Werte: **New** → Neubau | **Existing** → Bestand | **To Be Demolished** → Abbruch\n\n"
+        "Pset-Name leer lassen = alle Psets werden nach `Renovation Status` durchsucht. "
+        "Wenn kein Status gefunden wird, gilt **Bestand**."
+    )
 else:
     pset_config = {
-        "pset_name": st.session_state.get("mode_pset_name", "Pset_RevitElement"),
-        "pset_property": st.session_state.get("mode_pset_property", "Phase Created"),
+        "pset_name": st.session_state.get("mode_pset_name", ""),
+        "pset_property": st.session_state.get("mode_pset_property", "Renovation Status"),
     }
 
 # Analyse starten button

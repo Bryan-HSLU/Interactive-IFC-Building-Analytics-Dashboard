@@ -428,22 +428,37 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                 showarrow=True,
                 arrowhead=2,
                 arrowcolor="#D94F3D",
-                arrowsize=0.8,
-                ax=50,   # offset to the right
-                ay=-35,  # offset upwards
-                font=dict(size=11, color="#2D2D2D", family="Inter, sans-serif"),
+                arrowsize=1.0, # Premiumized slightly larger arrow
+                ax=60,   # offset slightly more to the right to avoid overlapping data points
+                ay=-40,  # offset slightly more upwards
+                font=dict(size=12, color="#2D2D2D", family="Inter, sans-serif"),
                 bgcolor="rgba(253, 237, 236, 0.95)",
                 bordercolor="#FADBD8",
-                borderwidth=1,
-                borderpad=4,
+                borderwidth=1.5,
+                borderpad=5,
             )
 
     apply_default_layout(fig, "Raumfläche vs. CO₂-Last")
     fig.update_layout(
         font=dict(size=14), # Globally larger font size for the scatter plot!
-        xaxis_title="Raumfläche (m²)", 
-        yaxis_title="CO₂-Last (kg CO₂eq)",
-        xaxis=dict(autorange=True), # Let it scale naturally to show all rooms (up to 180m²+)
+        title=dict(
+            font=dict(size=16, color=COLORS["text"]),
+        ),
+        xaxis=dict(
+            autorange=True, # Let it scale naturally to show all rooms (up to 180m²+)
+            title=dict(
+                text="Raumfläche (m²)",
+                font=dict(size=14, color=COLORS["text"])
+            ),
+            tickfont=dict(size=13, color=COLORS["text_light"])
+        ),
+        yaxis=dict(
+            title=dict(
+                text="CO₂-Last (kg CO₂eq)",
+                font=dict(size=14, color=COLORS["text"])
+            ),
+            tickfont=dict(size=13, color=COLORS["text_light"])
+        ),
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -452,7 +467,7 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
             x=0.5,
             font=dict(size=13), # Larger legend font
         ),
-        margin=dict(t=80), # larger top margin for title & legend
+        margin=dict(t=100, b=60, l=60, r=40), # larger top margin for title & legend
     )
     return fig
 

@@ -53,7 +53,7 @@ def _group_small_categories(series: pd.Series, max_cats: int = 7) -> pd.Series:
     return series.apply(lambda x: x if x in top else "Sonstige")
 
 
-# ── Page 3: Räume & Flächen ────────────────────────────────────────────────
+# ── Page 3: Räume & Flächen ──────────────────────────────────────────
 
 def create_room_boxplot(space_df: pd.DataFrame) -> go.Figure:
     if space_df.empty or "area_m2" not in space_df.columns:
@@ -141,7 +141,7 @@ def create_room_histogram(space_df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-# ── Page 4: Bauteile & Mengen ──────────────────────────────────────────────
+# ── Page 4: Bauteile & Mengen ───────────────────────────────────────
 
 def create_class_bar_horizontal(element_df: pd.DataFrame) -> go.Figure:
     if element_df.empty:
@@ -256,7 +256,7 @@ def create_diverging_bar(element_df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-# ── Page 5: Impact & Costs ─────────────────────────────────────────────────
+# ── Page 5: Impact & Costs ─────────────────────────────────────────────
 
 def create_co2_bar(element_df: pd.DataFrame) -> go.Figure:
     if element_df.empty or "co2e_total" not in element_df.columns:
@@ -296,12 +296,6 @@ def create_co2_treemap(element_df: pd.DataFrame) -> go.Figure:
     agg = df.groupby(["material", "ifc_class"])["co2e_total"].sum().reset_index()
     agg = agg[agg["co2e_total"] > 0]
 
-    labels = ["Gesamt"] + agg["material"].unique().tolist() + agg["material"].tolist()
-    parents = [""] + ["Gesamt"] * len(agg["material"].unique()) + agg["material"].tolist()
-    values = [0] + [agg[agg["material"] == m]["co2e_total"].sum() for m in agg["material"].unique()] + agg["co2e_total"].tolist()
-    ids = ["Gesamt"] + agg["material"].unique().tolist() + [f"{r['material']}_{r['ifc_class']}" for _, r in agg.iterrows()]
-
-    # Rebuild properly
     mat_totals = agg.groupby("material")["co2e_total"].sum().reset_index()
     all_labels, all_parents, all_values, all_ids = ["Gesamt"], [""], [0], ["root"]
 
@@ -325,7 +319,8 @@ def create_co2_treemap(element_df: pd.DataFrame) -> go.Figure:
         branchvalues="total",
         hovertemplate="<b>%{label}</b><br>CO2e: %{value:,.0f} kg<br>Anteil: %{percentRoot:.1%}<extra></extra>",
         marker=dict(
-            colorscale=[[0, "#FFF3CD"], [0.5, "#E67E22"], [1, "#784212"]],
+            # Petrol-Skala: Hell → Dunkel (kein Orange mehr)
+            colorscale=[[0, "#D5EEF0"], [0.5, "#1A7F8E"], [1, "#0D4A52"]],
             showscale=True,
             colorbar_title="CO2e (kg)",
         ),
@@ -352,7 +347,8 @@ def create_cost_heatmap(element_df: pd.DataFrame) -> go.Figure:
         z=pivot.values,
         x=pivot.columns.tolist(),
         y=pivot.index.tolist(),
-        colorscale=[[0, "#FFFFFF"], [1, "#2980B9"]],
+        # Warm-Braun-Skala statt Blau
+        colorscale=[[0, "#F5EFE6"], [1, "#A0522D"]],
         text=z_text,
         texttemplate="%{text}" if z_text else "",
         hovertemplate="Geschoss: %{y}<br>Klasse: %{x}<br>Kosten: CHF %{z:,.0f}<extra></extra>",
@@ -394,7 +390,7 @@ def create_cost_bar(element_df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-# ── Page 6: Quality Check ──────────────────────────────────────────────────
+# ── Page 6: Quality Check ──────────────────────────────────────────
 
 def create_quality_gauge(score: float) -> go.Figure:
     fig = go.Figure(go.Indicator(
@@ -405,12 +401,13 @@ def create_quality_gauge(score: float) -> go.Figure:
             "axis": {"range": [0, 100], "tickwidth": 1},
             "bar": {"color": COLORS["primary"]},
             "steps": [
-                {"range": [0, 50], "color": "#FADBD8"},
-                {"range": [50, 80], "color": "#FCF3CF"},
-                {"range": [80, 100], "color": "#D5F5E3"},
+                # Dunkelbraun → Amber → Petrol (kein Rot/Grün)
+                {"range": [0, 50], "color": "#F0DDD0"},   # helles Warm-Braun
+                {"range": [50, 80], "color": "#FDF3DC"},  # helles Amber
+                {"range": [80, 100], "color": "#D5EEF0"}, # helles Petrol
             ],
             "threshold": {
-                "line": {"color": COLORS["error_critical"], "width": 4},
+                "line": {"color": COLORS["error_warning"], "width": 4},
                 "thickness": 0.75,
                 "value": score,
             },
@@ -465,8 +462,6 @@ def create_status_distribution(element_df: pd.DataFrame) -> go.Figure:
     df = element_df.copy()
     df["ifc_class"] = _group_small_categories(df["ifc_class"], 8)
     pivot = df.pivot_table(index="ifc_class", columns="status", aggfunc="size", fill_value=0)
-
-    # Convert to percentages
     pivot_pct = pivot.div(pivot.sum(axis=1), axis=0) * 100
 
     fig = go.Figure()
@@ -490,14 +485,14 @@ def create_pset_matrix_heatmap(pset_matrix: pd.DataFrame) -> go.Figure:
     if pset_matrix is None or pset_matrix.empty:
         return _empty_fig("Keine Pset-Daten verfügbar")
 
-    # Normalize: 0 = missing, 1 = present
     z = (pset_matrix > 0).astype(int).values
 
     fig = go.Figure(go.Heatmap(
         z=z,
         x=pset_matrix.columns.tolist(),
         y=pset_matrix.index.tolist(),
-        colorscale=[[0, "#ECF0F1"], [1, "#2980B9"]],
+        # Grau (fehlt) → Petrol (vorhanden)
+        colorscale=[[0, "#ECF0F1"], [1, "#1A7F8E"]],
         showscale=False,
         hovertemplate="Klasse: %{y}<br>Pset: %{x}<br>%{text}<extra></extra>",
         text=[["Vorhanden" if v else "Fehlt" for v in row] for row in z],
@@ -508,7 +503,7 @@ def create_pset_matrix_heatmap(pset_matrix: pd.DataFrame) -> go.Figure:
     return fig
 
 
-# ── Page 3: Additional Charts ─────────────────────────────────────────────────
+# ── Page 3: Additional Charts ──────────────────────────────────────────────
 
 def create_room_sunburst(space_df: pd.DataFrame) -> go.Figure:
     if space_df.empty:
@@ -630,7 +625,7 @@ def create_room_bubble(space_df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-# ── Page 4: Additional Charts ─────────────────────────────────────────────────
+# ── Page 4: Additional Charts ──────────────────────────────────────────────
 
 def create_grouped_bar(element_df: pd.DataFrame, mode: str = "neubau") -> go.Figure:
     if element_df.empty or "volume_m3" not in element_df.columns:
@@ -705,7 +700,8 @@ def create_element_treemap(element_df: pd.DataFrame) -> go.Figure:
         ids=ids, labels=labels, parents=parents, values=values,
         branchvalues="total",
         hovertemplate="<b>%{label}</b><br>Volumen: %{value:.1f} m³<br>Anteil: %{percentRoot:.1%}<extra></extra>",
-        marker=dict(colorscale=[[0, "#AED6F1"], [1, "#1A5276"]]),
+        # Schiefer-Blau-Skala statt Blau
+        marker=dict(colorscale=[[0, "#D6DCE8"], [1, "#34495E"]]),
     ))
     apply_default_layout(fig, "Treemap: Volumen nach Material und IFC-Klasse")
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))
@@ -806,7 +802,7 @@ def create_raincloud_plot(element_df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-# ── Page 5: Additional Charts ─────────────────────────────────────────────────
+# ── Page 5: Additional Charts ──────────────────────────────────────────────
 
 def create_waterfall_co2(element_df: pd.DataFrame) -> go.Figure:
     if element_df.empty or "co2e_total" not in element_df.columns:
@@ -835,9 +831,9 @@ def create_waterfall_co2(element_df: pd.DataFrame) -> go.Figure:
         orientation="v", measure=measures, x=x, y=y,
         text=[f"{v:,.0f}" for v in y], textposition="outside",
         connector=dict(line=dict(color=COLORS["grid"], width=1, dash="dot")),
-        increasing=dict(marker=dict(color=COLORS["abbruch"])),
-        decreasing=dict(marker=dict(color=COLORS["neubau"])),
-        totals=dict(marker=dict(color=COLORS["primary"])),
+        increasing=dict(marker=dict(color=COLORS["abbruch"])),   # Warm-Braun
+        decreasing=dict(marker=dict(color=COLORS["neubau"])),    # Petrol
+        totals=dict(marker=dict(color=COLORS["primary"])),       # Schiefer
         hovertemplate="<b>%{x}</b><br>CO2e: %{y:,.0f} kg<extra></extra>",
     ))
     apply_default_layout(fig, "CO2e-Beitrag nach Material (Waterfall)")
@@ -879,11 +875,11 @@ def create_sankey_material(element_df: pd.DataFrame) -> go.Figure:
     for _, r in agg1.iterrows():
         if r["material"] in idx and r["ifc_class"] in idx:
             src.append(idx[r["material"]]); tgt.append(idx[r["ifc_class"]])
-            val.append(r["co2e_total"]); clr.append("rgba(41,128,185,0.3)")
+            val.append(r["co2e_total"]); clr.append("rgba(26,127,142,0.3)")   # Petrol
     for _, r in agg2.iterrows():
         if r["ifc_class"] in idx and r["bucket"] in idx:
             src.append(idx[r["ifc_class"]]); tgt.append(idx[r["bucket"]])
-            val.append(r["co2e_total"]); clr.append("rgba(192,57,43,0.2)")
+            val.append(r["co2e_total"]); clr.append("rgba(160,82,45,0.25)")   # Warm-Braun
 
     if not val:
         return _empty_fig("Keine Verbindungen für Sankey")
@@ -946,7 +942,7 @@ def create_slope_co2(element_df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-# ── Page 6: Additional Charts ─────────────────────────────────────────────────
+# ── Page 6: Additional Charts ──────────────────────────────────────────────
 
 def create_upset_plot(error_df: pd.DataFrame) -> go.Figure:
     from plotly.subplots import make_subplots

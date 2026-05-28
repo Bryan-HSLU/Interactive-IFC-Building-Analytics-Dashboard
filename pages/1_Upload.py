@@ -3,7 +3,6 @@ import tempfile
 import os
 from src.state_manager import init_session_state, store_parsed_data, get_quality_data
 
-st.set_page_config(page_title="Upload – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -110,7 +109,6 @@ if st.button(
     with status_box:
         warnings = []
 
-        # Save to temp file
         st.write("Datei lesen…")
         progress.progress(10)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
@@ -135,7 +133,7 @@ if st.button(
             st.write("IfcSpace auslesen…")
             space_count = len(parsed_data.get("spaces", []))
             if space_count == 0:
-                warnings.append("IfcSpace nicht gefunden — Raumseite (Seite 3) wird eingeschränkt verfügbar sein.")
+                warnings.append("IfcSpace nicht gefunden — Seite 3 (Räume & Flächen) ist für dieses Modell nicht verfügbar.")
             st.write(f"   → {space_count} Räume gefunden")
             progress.progress(65)
 
@@ -177,7 +175,6 @@ if st.session_state.get("ifc_parsed"):
     space_df = st.session_state.get("space_df")
     storey_df = st.session_state.get("storey_df")
 
-    # Mode badge
     _mode = st.session_state.get("mode_project", "")
     _mode_label = "Neubau" if _mode == "neubau" else "Umbau / Sanierung"
     _mode_color = "#D6EAF8" if _mode == "neubau" else "#FDEBD0"
@@ -187,7 +184,6 @@ if st.session_state.get("ifc_parsed"):
         unsafe_allow_html=True,
     )
 
-    # KPI cards
     _, _quality_summary = get_quality_data()
     _score = _quality_summary.get("score", 0) if _quality_summary else 0
     kpi_cols = st.columns(6)
@@ -204,7 +200,6 @@ if st.session_state.get("ifc_parsed"):
     with kpi_cols[5]:
         st.metric("Modellqualität", f"{_score:.0f}%")
 
-    # Metadata table
     st.subheader("Projektinformationen")
     import pandas as pd
     meta_rows = {
@@ -216,7 +211,6 @@ if st.session_state.get("ifc_parsed"):
     }
     st.table(pd.DataFrame.from_dict(meta_rows, orient="index", columns=["Wert"]))
 
-    # Umbau: status overview
     mode = st.session_state.get("mode_project")
     if mode == "umbau" and element_df is not None and not element_df.empty:
         st.subheader("Statusverteilung (Umbau-Modus)")
@@ -231,6 +225,5 @@ if st.session_state.get("ifc_parsed"):
                 f"{not_found} Elemente ohne Statusdaten — auf Seite 6 überprüfen."
             )
 
-    # Sidebar
     from src.filters import render_sidebar
     render_sidebar(element_df, space_df, mode)

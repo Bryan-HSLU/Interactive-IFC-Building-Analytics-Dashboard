@@ -23,18 +23,29 @@ def init_session_state():
     st.session_state.setdefault("filter_classes", [])
     st.session_state.setdefault("filter_status", "Alle")
 
-    st.session_state.setdefault("unit_area", "m²")
-    st.session_state.setdefault("unit_volume", "m³")
+    st.session_state.setdefault("unit_area", "m\u00b2")
+    st.session_state.setdefault("unit_volume", "m\u00b3")
     st.session_state.setdefault("unit_mass", "kg")
 
+    # Page 2 – Overview
+    st.session_state.setdefault("overview_storey", None)   # fix #2
+
+    # Page 3 – R\u00e4ume & Fl\u00e4chen
     st.session_state.setdefault("cf_page3_usage", None)
     st.session_state.setdefault("cf_page3_storey", None)
     st.session_state.setdefault("cf_page3_size_bin", None)
+    st.session_state.setdefault("cf_page3_room", None)     # fix #2
+
+    # Page 4 – Bauteile & Mengen
     st.session_state.setdefault("cf_page4_class", None)
     st.session_state.setdefault("cf_page4_material", None)
+
+    # Page 5 – Impact & Costs
     st.session_state.setdefault("cf_page5_material", None)
     st.session_state.setdefault("cf_page5_treemap", None)
     st.session_state.setdefault("cf_page5_heatmap", None)
+
+    # Page 6 – Quality Check
     st.session_state.setdefault("cf_page6_error_cat", None)
     st.session_state.setdefault("cf_page6_status_class", None)
 

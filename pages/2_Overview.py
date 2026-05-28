@@ -11,9 +11,9 @@ from src.chart_factory import (
     create_status_distribution,
 )
 from src.impact_calculator import get_impact_summary
+from src.ui_helpers import kpi_card
 from src.constants import SIA_2032_LIMIT, COLORS, STATUS_COLORS
 
-st.set_page_config(page_title="Overview – IFC Analytics", page_icon=None, layout="wide")
 init_session_state()
 
 try:
@@ -34,28 +34,14 @@ if not st.session_state.get("ifc_parsed"):
 element_df = get_element_df(filtered=True)
 space_df = get_space_df(filtered=True)
 
-# ── Helper: KPI-Card (konsistent mit Seite 5) ────────────────────────────
-def _kpi_card(label: str, value: str, delta_text: str = "", delta_color: str = "") -> None:
-    delta_html = ""
-    if delta_text:
-        color = delta_color or COLORS["text_light"]
-        delta_html = f'<div style="font-size:0.78rem;color:{color};margin-top:2px;">{delta_text}</div>'
-    st.markdown(
-        f'<div style="background:rgba(0,0,0,0.03);border-radius:8px;padding:10px 14px;margin-bottom:6px;">'
-        f'<div style="font-size:0.8rem;color:{COLORS["text_light"]};">{label}</div>'
-        f'<div style="font-size:1.4rem;font-weight:600;color:{COLORS["text"]};">{value}</div>'
-        f'{delta_html}</div>',
-        unsafe_allow_html=True,
-    )
-
-# ── Mode Badge ─────────────────────────────────────────────────────────────────
+# ── Mode Badge ────────────────────────────────────────────────────────────────────────
 if mode == "neubau":
     mode_label = "Neubau"
-    mode_bg = "#D5EEF0"       # helles Petrol
+    mode_bg = "#D5EEF0"
     mode_border = COLORS["neubau"]
 else:
     mode_label = "Umbau / Sanierung"
-    mode_bg = "#EDE3D5"       # helles Warm-Braun
+    mode_bg = "#EDE3D5"
     mode_border = COLORS["abbruch"]
 
 st.markdown(
@@ -66,7 +52,8 @@ st.markdown(
 )
 st.title("Overview")
 
-# ── KPI Row ─────────────────────────────────────────────────────────────────
+# ── KPI Row ───────────────────────────────────────────────────────────────────────
+# Fix: single call to get_quality_data() — previous code called it twice
 _, quality_summary = get_quality_data()
 summary = get_impact_summary(element_df, space_df, mode)
 score = quality_summary.get("score", 0) if quality_summary else 0
@@ -74,11 +61,11 @@ co2_per_m2 = summary.get("co2e_per_m2") if summary else None
 
 kpi = st.columns(5)
 with kpi[0]:
-    _kpi_card("Bauelemente", f"{len(element_df):,}" if element_df is not None else "–")
+    kpi_card("Bauelemente", f"{len(element_df):,}" if element_df is not None else "–")
 with kpi[1]:
-    _kpi_card("Räume", f"{len(space_df):,}" if space_df is not None and not space_df.empty else "–")
+    kpi_card("Räume", f"{len(space_df):,}" if space_df is not None and not space_df.empty else "–")
 with kpi[2]:
-    _kpi_card(
+    kpi_card(
         "Geschosse",
         f"{element_df['storey'].nunique():,}" if element_df is not None and "storey" in element_df.columns else "–"
     )
@@ -91,26 +78,24 @@ with kpi[3]:
         else:
             d_color = COLORS["error_warning"]
             d_text = f"↑ {diff:.1f} über SIA 2032"
-        _kpi_card("CO₂e / m² NGF", f"{co2_per_m2:.1f} kg/m²", d_text, d_color)
+        kpi_card("CO₂e / m² NGF", f"{co2_per_m2:.1f} kg/m²", d_text, d_color)
     else:
-        _kpi_card("CO₂e / m² NGF", "–", f"Limit: {SIA_2032_LIMIT:.0f} kg/m²·a", COLORS["text_light"])
+        kpi_card("CO₂e / m² NGF", "–", f"Limit: {SIA_2032_LIMIT:.0f} kg/m²·a", COLORS["text_light"])
 with kpi[4]:
     q_color = COLORS["error_ok"] if score >= 80 else COLORS["error_warning"] if score >= 50 else COLORS["error_critical"]
-    _kpi_card("Modellqualität", f"{score:.0f}%", delta_color=q_color)
+    kpi_card("Modellqualität", f"{score:.0f}%", delta_color=q_color)
 
 st.divider()
 
-# ── Row 1: Sunburst (Raumhierarchie) + Bubble Chart (Fläche × Höhe) ────────────
+# ── Row 1: Sunburst + Bubble Chart ─────────────────────────────────────────────────
 col_sun, col_bubble = st.columns(2)
 
 with col_sun:
     if space_df is not None and not space_df.empty:
         fig_sun = create_room_sunburst(space_df)
-        # Sunburst mit plotly_events – Klick filtert st.session_state.overview_storey
         sel_sun = plotly_events(fig_sun, click_event=True, key="ov_sunburst", override_height=420)
         if sel_sun:
             clicked_label = sel_sun[0].get("label") or sel_sun[0].get("id") or ""
-            # Nur Geschoss-Ebene (kein root, kein Nutzungstyp-Leaf)
             known_storeys = space_df["storey"].dropna().unique().tolist() if "storey" in space_df.columns else []
             if clicked_label in known_storeys:
                 prev = st.session_state.get("overview_storey")
@@ -121,17 +106,16 @@ with col_sun:
 
 with col_bubble:
     if space_df is not None and not space_df.empty:
-        # Optionaler Storey-Filter via Sunburst-Klick
         sel_storey = st.session_state.get("overview_storey")
         df_bubble = space_df[space_df["storey"] == sel_storey] if sel_storey and "storey" in space_df.columns else space_df
+        # Fix: removed broken inline reset link — real reset button is shown below
         if sel_storey:
-            st.caption(f"🔍 Gefiltert: Geschoss **{sel_storey}** — [zurücksetzen](?)")  # visual hint
+            st.caption(f"🔍 Gefiltert: Geschoss **{sel_storey}**")
         fig_bubble = create_room_bubble(df_bubble)
         st.plotly_chart(fig_bubble, use_container_width=True, key="ov_bubble")
     else:
         st.info("Keine Raumdaten für Bubble Chart verfügbar.")
 
-# Reset-Button für Sunburst-Filter
 if st.session_state.get("overview_storey"):
     if st.button("× Geschoss-Filter zurücksetzen", key="ov_reset"):
         st.session_state.overview_storey = None
@@ -139,7 +123,7 @@ if st.session_state.get("overview_storey"):
 
 st.divider()
 
-# ── Row 2: CO2-Treemap (exklusiv hier als Überblick) + Status-Donut (Umbau) ──────
+# ── Row 2: CO2-Treemap + Status-Donut (Umbau) ─────────────────────────────────
 if mode == "umbau" and element_df is not None and "status" in element_df.columns:
     col_tree, col_donut = st.columns([3, 2])
 else:
@@ -180,7 +164,7 @@ if col_donut is not None:
         )
         st.plotly_chart(fig_donut, use_container_width=True, key="ov_donut")
 
-# ── Row 3 (Umbau): Statusverteilung pro IFC-Klasse ─────────────────────────
+# ── Row 3 (Umbau): Statusverteilung pro IFC-Klasse ─────────────────────────────
 if mode == "umbau" and element_df is not None and "status" in element_df.columns:
     st.divider()
     fig_status = create_status_distribution(element_df)

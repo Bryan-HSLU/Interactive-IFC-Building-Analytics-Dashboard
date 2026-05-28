@@ -26,7 +26,6 @@ _MATERIAL_GROUP_COLORS = {
 }
 
 # ── Holz-Subgruppen: alle Varianten werden zu "Holz" zusammengefasst ──────────
-# Materialnamen die explizit als Holz-Gruppe erkannt werden sollen
 _HOLZ_TRIGGERS = [
     "vollholz", "holzwerkstoff", "holz balken", "holzbalken",
     "holz fassade", "holzfassade", "fassade holz",
@@ -94,24 +93,22 @@ def _empty_fig(message: str) -> go.Figure:
 def _get_room_color(usage: str, force_orange: bool = False) -> str:
     usage_lower = str(usage).lower().strip()
     
-    # "Gesamt" (parent root) is ALWAYS orange as requested!
     if "gesamt" in usage_lower:
-        return "#E67E22"  # Bright Orange
+        return "#E67E22"
         
     if force_orange:
-        # Beautiful shades of orange for the "Gesamt" clicked state
         if "veloraum" in usage_lower:
-            return "#D35400"      # Dark Orange
+            return "#D35400"
         elif "bar" in usage_lower or "empfang" in usage_lower:
-            return "#E67E22"      # Rich Orange
+            return "#E67E22"
         elif "saal" in usage_lower:
-            return "#F39C12"      # Amber Orange
+            return "#F39C12"
         elif "restaurant" in usage_lower:
-            return "#FF9800"      # Light Orange
+            return "#FF9800"
         elif "warteraum" in usage_lower:
-            return "#FFA726"      # Gold Orange
+            return "#FFA726"
         else:
-            return "#FFB74D"      # Soft Orange
+            return "#FFB74D"
 
     for key, color in ROOM_COLORS.items():
         if key.lower() in usage_lower:
@@ -132,22 +129,18 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return _empty_fig("Keine positiven Raumflächen")
 
-    # Group by room type (usage)
     agg = df.groupby("usage")["area_m2"].sum().reset_index()
     agg = agg.sort_values("area_m2", ascending=False)
 
-    # Max 6 room types, rest goes to 'Andere'
     if len(agg) > 5:
         top = agg.head(5)
         rest_val = agg.iloc[5:]["area_m2"].sum()
         rest_row = pd.DataFrame([{"usage": "Andere", "area_m2": rest_val}])
         agg = pd.concat([top, rest_row], ignore_index=True)
 
-    # Read active room filter to determine if we color the entire treemap orange
     cf_usage = st.session_state.get("cf_page3_usage")
     force_orange = (cf_usage == "Gesamt")
 
-    # Parent labeled bold: "<b>Gesamt</b>"
     labels = ["<b>Gesamt</b>"]
     parents = [""]
     values = [agg["area_m2"].sum()]
@@ -168,7 +161,7 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
         texttemplate="<b>%{label}</b><br>%{value:.1f} m²",
         hovertemplate="<b>%{label}</b><br>Fläche: %{value:.1f} m²<br>Anteil: %{percentRoot:.1%}<extra></extra>",
         marker=dict(colors=colors, colorscale=None),
-        textfont=dict(size=14, family="Inter, sans-serif"), # Larger text and numbers!
+        textfont=dict(size=14, family="Inter, sans-serif"),
     ))
     apply_default_layout(fig, "Raumfläche nach Nutzungstyp (NFA)")
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))
@@ -189,16 +182,11 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
     if df.empty:
         return _empty_fig("Keine Mengendaten verfügbar")
 
-    # Classify raw materials into standard semantic groups
     df["grouped_material"] = df["material"].apply(_classify_material_group)
-
-    # Aggregate by grouped material
     agg = df.groupby("grouped_material")[col].sum().reset_index()
     agg.columns = ["material", "quantity"]
-
     total_volume = agg["quantity"].sum()
 
-    # Separate "Andere" to place it at the very bottom of the horizontal bar chart
     is_andere = agg["material"] == "Andere"
     andere_row = agg[is_andere]
     main_rows = agg[~is_andere].sort_values("quantity", ascending=True)
@@ -208,7 +196,6 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
     else:
         agg = main_rows
 
-    # Resolve premium colors dynamically for each bar from our global palette (same as stacked bar below!)
     colors = [_MATERIAL_GROUP_COLORS.get(m, "#BDC3C7") for m in agg["material"]]
 
     fig = go.Figure(go.Bar(
@@ -221,7 +208,6 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
         hovertemplate=f"<b>%{{y}}</b><br>Menge: %{{x:.1f}} {unit}<extra></extra>",
     ))
 
-    # Add annotation for the dominant material
     if not main_rows.empty and total_volume > 0:
         max_row = main_rows.loc[main_rows["quantity"].idxmax()]
         max_material = max_row["material"]
@@ -229,37 +215,25 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
         pct = (max_qty / total_volume) * 100
 
         fig.add_annotation(
-            x=max_qty,
-            y=max_material,
+            x=max_qty, y=max_material,
             text=f"macht {pct:.1f}% des Gesamtvolumens aus",
-            showarrow=False, # Removed arrow
-            xanchor="left",  # Align callout text to the left
-            xshift=65,       # Shift it to the right of the quantity value (e.g. 331.0) printed outside the bar
+            showarrow=False,
+            xanchor="left", xshift=65,
             font=dict(size=11, color="#2D2D2D", family="Inter, sans-serif"),
-            bgcolor="#FDEDEC",
-            bordercolor="#FADBD8",
-            borderwidth=1,
-            borderpad=4,
-            align="left",
+            bgcolor="#FDEDEC", bordercolor="#FADBD8", borderwidth=1, borderpad=4, align="left",
         )
 
     apply_default_layout(fig, f"Materialmengen im Gebäude ({unit})")
-    
-    # Expand X-axis range slightly to make sure the text and annotation fit without clipping
     max_val = agg["quantity"].max()
     fig.update_layout(
         title=dict(
             text=f"Materialmengen im Gebäude ({unit})",
             font=dict(size=14, color=COLORS["text"]),
-            x=0.0,
-            y=0.98,          # Positioned higher!
-            yanchor="top",
-            xanchor="left",
+            x=0.0, y=0.98, yanchor="top", xanchor="left",
         ),
-        xaxis_title=unit, 
-        yaxis_title="",
+        xaxis_title=unit, yaxis_title="",
         xaxis=dict(range=[0, max_val * 1.55]),
-        margin=dict(t=80), # larger top margin for title
+        margin=dict(t=80),
     )
     return fig
 
@@ -277,23 +251,17 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return _empty_fig("Keine CO₂-Werte vorhanden")
 
-    # ── Schritt 1: Holz-Varianten zusammenfassen ──────────────────────────────
-    # Alle Holz-Subgruppen (Vollholz, Holzwerkstoff, Holz Balken, Fassade, etc.)
-    # werden auf den einheitlichen Namen "Holz" normiert.
     def _normalize_to_holz(material_name: str) -> str:
         name = str(material_name).lower().strip()
         for trigger in _HOLZ_TRIGGERS:
             if trigger in name:
                 return "Holz"
-        return material_name  # unveränderter Originalname
+        return material_name
 
     df["material_grouped"] = df["material"].apply(_normalize_to_holz)
-
-    # ── Schritt 2: Aggregieren nach normiertem Materialnamen ──────────────────
     agg = df.groupby("material_grouped")["co2e_total"].sum().reset_index()
     agg.columns = ["material", "co2"]
 
-    # ── Schritt 3: Materialien < 200 kg CO₂ als "Andere" zusammenfassen ───────
     SCHWELLENWERT_KG = 200
     mask_klein = agg["co2"] < SCHWELLENWERT_KG
     andere_co2 = agg.loc[mask_klein, "co2"].sum()
@@ -301,23 +269,18 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
 
     if andere_co2 > 0:
         andere_row = pd.DataFrame([{"material": "Andere", "co2": andere_co2}])
-        # Falls "Andere" bereits in agg_haupt vorhanden (>= 200 kg), addieren
         if "Andere" in agg_haupt["material"].values:
             agg_haupt.loc[agg_haupt["material"] == "Andere", "co2"] += andere_co2
         else:
             agg_haupt = pd.concat([andere_row, agg_haupt], ignore_index=True)
 
     agg = agg_haupt.copy()
-
-    # "Andere" ans Ende (oben im horizontalen Balkendiagramm = letzte Zeile)
     is_andere = agg["material"] == "Andere"
     andere_rows = agg[is_andere]
     haupt_rows = agg[~is_andere].sort_values("co2", ascending=True)
     agg = pd.concat([andere_rows, haupt_rows], ignore_index=True)
 
     avg_val = agg["co2"].mean()
-
-    # ── Schritt 4: Farben (Grün → Gelb → Rot) ────────────────────────────────
     vals = agg["co2"].tolist()
     min_v, max_v = min(vals), max(vals)
     span = (max_v - min_v) if max_v != min_v else 1.0
@@ -337,32 +300,19 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
             b = int(66 + t * (61 - 66))
         colors.append(f"rgb({r},{g},{b})")
 
-    # "Andere" immer grau einfärben
-    final_colors = []
-    for mat, col in zip(agg["material"].tolist(), colors):
-        if mat == "Andere":
-            final_colors.append("#BDC3C7")
-        else:
-            final_colors.append(col)
+    final_colors = ["#BDC3C7" if mat == "Andere" else col for mat, col in zip(agg["material"].tolist(), colors)]
 
     fig = go.Figure(go.Bar(
-        x=agg["co2"],
-        y=agg["material"],
-        orientation="h",
+        x=agg["co2"], y=agg["material"], orientation="h",
         marker_color=final_colors,
         text=[f"{v:,.0f} kg" for v in agg["co2"]],
         textposition="outside",
         hovertemplate="<b>%{y}</b><br>CO₂e-Last: %{x:,.0f} kg<extra></extra>",
     ))
 
-    # Referenzlinie beim Durchschnitt
     fig.add_vline(
-        x=avg_val,
-        line_dash="dash",
-        line_color=COLORS["text_light"],
-        line_width=1.5,
-        annotation_text="⌀ Durchschnitt",
-        annotation_position="top right",
+        x=avg_val, line_dash="dash", line_color=COLORS["text_light"], line_width=1.5,
+        annotation_text="⌀ Durchschnitt", annotation_position="top right",
         annotation_font=dict(size=11, color=COLORS["text_light"]),
     )
 
@@ -385,7 +335,6 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return _empty_fig("Keine quantitativen Werte für Scatter Plot")
 
-    # Define room groups according to the user request
     RAUM_GRUPPEN = {
         "Veloraum":     ("Lager/Technik",  "#5C6E7E"),
         "Abstellkamer": ("Lager/Technik",  "#5C6E7E"),
@@ -413,33 +362,26 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
     df["grouped_usage"] = df["usage"].apply(lambda u: _group_room_usage(u)[0])
     df["group_color"] = df["usage"].apply(lambda u: _group_room_usage(u)[1])
 
-    # Dynamic groups based on data
     group_order = ["Aufenthalt", "Lager/Technik", "Sanitär", "Verkehr", "Andere"]
     usages = [u for u in group_order if u in df["grouped_usage"].values]
 
     fig = go.Figure()
-
-    # Track all data for regression
     all_x = df["area_m2"].tolist()
     all_y = df["co2_load"].tolist()
 
-    # Plot grouped scatter points
     for usage in usages:
         sub = df[df["grouped_usage"] == usage]
         color = sub["group_color"].iloc[0]
         names = sub["name"].astype(str).tolist() if "name" in sub.columns else ["Raum"] * len(sub)
-        
         fig.add_trace(go.Scatter(
             x=sub["area_m2"], y=sub["co2_load"],
             mode="markers", name=usage,
-            # Significantly larger (size=14), more opaque (0.95), and with a distinct dark outline (#2D2D2D, width=1.5) to make points pop!
             marker=dict(color=color, size=14, opacity=0.95, line=dict(width=1.5, color="#2D2D2D")),
             text=names,
             customdata=sub["usage"].tolist(),
             hovertemplate="<b>%{text}</b><br>Kategorie: " + usage + "<br>Typ: %{customdata}<br>Fläche: %{x:.1f} m²<br>CO₂-Last: %{y:,.0f} kg<extra></extra>",
         ))
 
-    # Add Regression/Trend Line
     m, c = 0, 0
     if len(all_x) > 1:
         try:
@@ -447,17 +389,14 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
             x_range = np.linspace(min(all_x), max(all_x), 100)
             y_range = m * x_range + c
             fig.add_trace(go.Scatter(
-                x=x_range, y=y_range,
-                mode="lines", name="Trendlinie",
+                x=x_range, y=y_range, mode="lines", name="Trendlinie",
                 line=dict(color=COLORS["text_light"], width=1.5, dash="dot"),
-                hoverinfo="skip"
+                hoverinfo="skip",
             ))
         except Exception:
             pass
 
-    # Add Outlier Annotations
     if len(all_x) > 1 and m != 0:
-        # Exclude WC and Technik completely from being annotated as outliers
         candidates = []
         for idx, row in df.iterrows():
             room_name = str(row.get("name", "")).lower()
@@ -465,146 +404,94 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
             if "wc" in room_name or "wc" in room_type or "technik" in room_name or "technik" in room_type:
                 continue
             candidates.append(row)
-            
+
         if candidates:
             cand_df = pd.DataFrame(candidates)
             cand_df["y_pred"] = m * cand_df["area_m2"] + c
             cand_df["residual"] = cand_df["co2_load"] - cand_df["y_pred"]
-            
+
             annotated_ids = set()
             to_annotate = []
-            
-            # 1. Always annotate Veloraum (the absolute primary outlier)
+
             for idx, row in cand_df.iterrows():
                 r_name = str(row.get("name", "")).lower()
                 r_type = str(row.get("usage", "")).lower()
                 if "veloraum" in r_name or "veloraum" in r_type:
                     to_annotate.append(row)
                     annotated_ids.add(row.name)
-            
-            # 2. Always annotate Aufenthaltsräume > 100 m² (like the Saal ~160 m²)
+
             for idx, row in cand_df.iterrows():
                 if row.name in annotated_ids:
                     continue
                 r_name = str(row.get("name", "")).lower()
                 r_type = str(row.get("usage", "")).lower()
                 area = float(row.get("area_m2", 0))
-                # Check if it is a lounge room (Aufenthaltsraum)
                 is_aufenthalt = any(k in r_name or k in r_type for k in ["saal", "restaurant", "bar", "empfang", "warteraum", "backstage"])
                 if is_aufenthalt and area > 100:
                     to_annotate.append(row)
                     annotated_ids.add(row.name)
-            
-            # 3. Fallback: Add other highest residual positive outliers if we have less than 3 annotations
+
             if len(to_annotate) < 3:
                 std_residual = df["residual"].std() if len(df) > 2 else 1.0
                 if pd.isna(std_residual) or std_residual <= 0:
                     std_residual = 1.0
-                    
                 rem = cand_df[(cand_df["residual"] > 1.2 * std_residual) & (~cand_df.index.isin(annotated_ids))].sort_values("residual", ascending=False)
                 for idx, row in rem.iterrows():
                     if len(to_annotate) >= 3:
                         break
                     to_annotate.append(row)
                     annotated_ids.add(row.name)
-            
-            # Annotate all selected outliers
+
             for row in to_annotate:
                 room_name = row.get("name") or "Raum"
                 room_type = row.get("usage") or ""
                 label_text = f"{room_name} ({room_type})" if room_type else room_name
-                
-                # Dynamic offsets to prevent labels from overlapping other data points!
-                ax_offset = 60
-                ay_offset = -40
-                
+                ax_offset, ay_offset = 60, -40
                 r_name_lower = str(room_name).lower()
                 r_type_lower = str(room_type).lower()
-                
                 if "bar" in r_name_lower or "empfang" in r_name_lower or "bar" in r_type_lower or "empfang" in r_type_lower:
-                    ax_offset = -40  # offset to the left
-                    ay_offset = 45   # offset downwards (under the circle!) to avoid covering the Veloraum point
+                    ax_offset, ay_offset = -40, 45
                 elif "saal" in r_name_lower or "saal" in r_type_lower:
-                    ax_offset = -60  # offset to the left
-                    ay_offset = -40  # offset upwards
+                    ax_offset, ay_offset = -60, -40
                 elif "veloraum" in r_name_lower or "veloraum" in r_type_lower:
-                    ax_offset = 60   # offset to the right
-                    ay_offset = -45  # offset upwards
-                
+                    ax_offset, ay_offset = 60, -45
+
                 fig.add_annotation(
-                    x=row["area_m2"],
-                    y=row["co2_load"],
-                    text=label_text,
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowcolor="#D94F3D",
-                    arrowsize=1.0,
-                    ax=ax_offset,
-                    ay=ay_offset,
+                    x=row["area_m2"], y=row["co2_load"],
+                    text=label_text, showarrow=True, arrowhead=2,
+                    arrowcolor="#D94F3D", arrowsize=1.0,
+                    ax=ax_offset, ay=ay_offset,
                     font=dict(size=13, color="#2D2D2D", family="Inter, sans-serif"),
                     bgcolor="rgba(253, 237, 236, 0.95)",
-                    bordercolor="#FADBD8",
-                    borderwidth=1.5,
-                    borderpad=5,
+                    bordercolor="#FADBD8", borderwidth=1.5, borderpad=5,
                 )
 
     apply_default_layout(fig, "Raumfläche vs. CO₂-Last")
     fig.update_layout(
-        font=dict(size=14, family="Inter, sans-serif"), # Globally larger font size for the scatter plot!
-        title=dict(
-            font=dict(size=16, color=COLORS["text"]),
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.05,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=13, color=COLORS["text"]), # Larger legend font
-        ),
-        margin=dict(t=100, b=60, l=60, r=40), # larger top margin for title & legend
+        font=dict(size=14, family="Inter, sans-serif"),
+        title=dict(font=dict(size=16, color=COLORS["text"])),
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, font=dict(size=13, color=COLORS["text"])),
+        margin=dict(t=100, b=60, l=60, r=40),
     )
-    # Force larger font sizes directly on axes to override any layout defaults!
-    fig.update_xaxes(
-        autorange=True, # Let it scale naturally to show all rooms (up to 180m²+)
-        title=dict(
-            text="Raumfläche (m²)",
-            font=dict(size=14, color=COLORS["text"])
-        ),
-        tickfont=dict(size=13, color=COLORS["text_light"])
-    )
-    fig.update_yaxes(
-        title=dict(
-            text="CO₂-Last (kg CO₂eq)",
-            font=dict(size=14, color=COLORS["text"])
-        ),
-        tickfont=dict(size=13, color=COLORS["text_light"])
-    )
+    fig.update_xaxes(autorange=True, title=dict(text="Raumfläche (m²)", font=dict(size=14, color=COLORS["text"])), tickfont=dict(size=13, color=COLORS["text_light"]))
+    fig.update_yaxes(title=dict(text="CO₂-Last (kg CO₂eq)", font=dict(size=14, color=COLORS["text"])), tickfont=dict(size=13, color=COLORS["text_light"]))
     return fig
 
 
 # ── 6️⃣ Stacked Bar Chart 100%: "Bauteil-Material-Verteilung" ──────────────────
 
-
 def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
-    # Define standard categories and groups
     part_order = ["Wand", "Boden", "Decke"]
     group_order = ["Beton", "Holz", "Metall", "Dämmung", "Glas", "Andere"]
 
     if element_df.empty or "ifc_class" not in element_df.columns or "material" not in element_df.columns:
-        # Return an empty-looking dataframe with correct static layout
         pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
     else:
         df = element_df.copy()
 
-        # Map IFC classes to standard German building parts (Wand, Boden, Decke)
-        # Fenster and Tür are completely omitted from this stacked bar chart.
-        # We classify IfcSlab elements as 'Decke' if their type_name contains Decke/Dach/Roof/Ceiling,
-        # otherwise they are floor slabs (Boden).
         def _map_class_to_part(row):
             cls = row.get("ifc_class", "")
             type_name = str(row.get("type_name", "")).lower()
-            
             if cls in ("IfcWall", "IfcWallStandardCase", "IfcCurtainWall"):
                 return "Wand"
             elif cls == "IfcRoof":
@@ -623,56 +510,33 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
         if df.empty:
             pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
         else:
-            # Classify raw materials into semantic groups
             df["mat_group"] = df["material"].apply(_classify_material_group)
-
-            # Group and calculate percentages
             pivot = df.pivot_table(index="part", columns="mat_group", aggfunc="size", fill_value=0)
-            
-            # Reindex to ensure Wand, Boden, Decke are ALWAYS present on the X-axis
-            # and all 6 material groups are ALWAYS present in the legend in the exact same order
             pivot = pivot.reindex(index=part_order, columns=group_order, fill_value=0)
-            
-            # Normalize to 100%
             row_sums = pivot.sum(axis=1)
-            # Avoid division by zero
             pivot_pct = pivot.div(row_sums.replace(0, 1), axis=0) * 100
-            # If a row had 0 total elements, keep its percentage at 0
             pivot_pct.loc[row_sums == 0] = 0.0
 
     fig = go.Figure()
     for grp in group_order:
         color = _MATERIAL_GROUP_COLORS[grp]
         fig.add_trace(go.Bar(
-            x=pivot_pct.index,
-            y=pivot_pct[grp],
-            name=grp,
+            x=pivot_pct.index, y=pivot_pct[grp], name=grp,
             marker_color=color,
             hovertemplate=f"<b>%{{x}}</b><br>{grp}: %{{y:.1f}}%<extra></extra>",
         ))
 
     fig.update_layout(barmode="stack")
-    # Apply default layout with a clean title
     apply_default_layout(fig, "Materialanteil pro Bauteilgruppe")
     fig.update_layout(
         title=dict(
             text="Materialanteil pro Bauteilgruppe",
             font=dict(size=14, color=COLORS["text"]),
-            x=0.0,
-            y=0.98,          # Positioned higher!
-            yanchor="top",
-            xanchor="left",
+            x=0.0, y=0.98, yanchor="top", xanchor="left",
         ),
         xaxis_title="", yaxis_title="Materialanteil (%)",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.05,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=11),
-        ),
-        margin=dict(t=80), # larger top margin for title
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, font=dict(size=11)),
+        margin=dict(t=80),
     )
     return fig
 
@@ -709,35 +573,66 @@ def create_quality_gauge(score: float) -> go.Figure:
 
 
 def create_error_bar(error_counts: dict) -> go.Figure:
-    labels = {
+    """Horizontales Balkendiagramm: Fehlertypen absteigend sortiert, Farben nach Schweregrad."""
+    # Reihenfolge und Labels
+    LABEL_MAP = {
+        "missing_storey":   "Kein Geschoss",
         "missing_material": "Kein Material",
         "missing_quantity": "Keine Mengen",
-        "missing_storey": "Kein Geschoss",
-        "missing_usage": "Keine Nutzung",
-        "missing_status": "Kein Status",
+        "missing_usage":    "Keine Nutzung",
+        "missing_status":   "Kein Status",
     }
-    cats = [labels[k] for k in labels if k in error_counts]
-    vals = [error_counts.get(k, 0) for k in labels if k in error_counts]
 
-    colors = []
-    for v in vals:
-        if v == 0:
-            colors.append(COLORS["error_ok"])
-        elif v <= 10:
-            colors.append(COLORS["error_warning"])
-        else:
-            colors.append(COLORS["error_critical"])
+    # Farben je Schweregrad (unabhängig von Wert)
+    SEVERITY_COLOR = {
+        "missing_storey":   "#E07B39",  # Critical – Orange
+        "missing_material": "#E07B39",  # Critical – Orange
+        "missing_quantity": "#D4A017",  # Warning  – Ocker
+        "missing_usage":    "#2E86AB",  # Info     – Blau
+        "missing_status":   "#2E86AB",  # Info     – Blau
+    }
+
+    rows = [
+        {"key": k, "label": LABEL_MAP[k], "value": error_counts.get(k, 0), "color": SEVERITY_COLOR[k]}
+        for k in LABEL_MAP if k in error_counts or error_counts.get(k, 0) == 0
+    ]
+    # Absteigend nach Wert sortieren
+    rows_sorted = sorted(rows, key=lambda r: r["value"], reverse=True)
+
+    labels = [r["label"] for r in rows_sorted]
+    values = [r["value"] for r in rows_sorted]
+    colors = [r["color"] if r["value"] > 0 else "#CCCCCC" for r in rows_sorted]
 
     fig = go.Figure(go.Bar(
-        x=cats,
-        y=vals,
-        marker_color=colors,
-        text=vals,
+        x=values,
+        y=labels,
+        orientation="h",
+        marker=dict(color=colors, line=dict(color="rgba(0,0,0,0)", width=0)),
+        text=[str(v) if v > 0 else "" for v in values],
         textposition="outside",
-        hovertemplate="<b>%{x}</b><br>Anzahl: %{y}<extra></extra>",
+        textfont=dict(size=12, color="#1A1A2E"),
+        hovertemplate="<b>%{y}</b><br>Anzahl: %{x}<extra></extra>",
+        cliponaxis=False,
     ))
+
     apply_default_layout(fig, "Fehler nach Kategorie")
-    fig.update_layout(xaxis_title="Fehlertyp", yaxis_title="Anzahl", showlegend=False)
+    max_val = max(values) if values else 1
+    fig.update_layout(
+        xaxis=dict(
+            title="Anzahl",
+            range=[0, max_val * 1.25],
+            showgrid=True,
+            gridcolor="#F0F0F0",
+            zeroline=False,
+        ),
+        yaxis=dict(
+            autorange="reversed",
+            tickfont=dict(size=12),
+        ),
+        showlegend=False,
+        bargap=0.35,
+        margin=dict(l=10, r=50, t=40, b=40),
+    )
     return fig
 
 

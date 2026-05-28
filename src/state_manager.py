@@ -1,5 +1,10 @@
 import streamlit as st
 import pandas as pd
+from pathlib import Path
+
+# Absolute path to KBOB CSV — works regardless of working directory
+_HERE = Path(__file__).parent.parent
+KBOB_PATH = _HERE / "data" / "kbob_factors.csv"
 
 
 def init_session_state():
@@ -27,39 +32,37 @@ def init_session_state():
     st.session_state.setdefault("unit_volume", "m\u00b3")
     st.session_state.setdefault("unit_mass", "kg")
 
-    # Page 2 – Overview
-    st.session_state.setdefault("overview_storey", None)   # fix #2
+    st.session_state.setdefault("overview_storey", None)
 
-    # Page 3 – R\u00e4ume & Fl\u00e4chen
     st.session_state.setdefault("cf_page3_usage", None)
     st.session_state.setdefault("cf_page3_storey", None)
     st.session_state.setdefault("cf_page3_size_bin", None)
-    st.session_state.setdefault("cf_page3_room", None)     # fix #2
+    st.session_state.setdefault("cf_page3_room", None)
 
-    # Page 4 – Bauteile & Mengen
     st.session_state.setdefault("cf_page4_class", None)
     st.session_state.setdefault("cf_page4_material", None)
 
-    # Page 5 – Impact & Costs
     st.session_state.setdefault("cf_page5_material", None)
     st.session_state.setdefault("cf_page5_treemap", None)
     st.session_state.setdefault("cf_page5_heatmap", None)
 
-    # Page 6 – Quality Check
     st.session_state.setdefault("cf_page6_error_cat", None)
     st.session_state.setdefault("cf_page6_status_class", None)
+
+    # Cross-filter Page 2
+    st.session_state.setdefault("cf_page2_storey", None)
+    st.session_state.setdefault("cf_page2_material", None)
 
 
 def store_parsed_data(parsed_data: dict, mode: str, pset_config: dict):
     from src.data_processor import build_element_df, build_space_df
     from src.impact_calculator import load_factors, calculate_impacts
     from src.quality_checker import check_quality, calculate_quality_score
-    from src.constants import KBOB_CSV_PATH
 
     element_df = build_element_df(parsed_data, mode, pset_config)
     space_df = build_space_df(parsed_data)
 
-    factors_df = load_factors(KBOB_CSV_PATH)
+    factors_df = load_factors(str(KBOB_PATH))
     impact_df = calculate_impacts(element_df, factors_df)
 
     error_df, quality_summary = check_quality(impact_df, space_df, mode)
@@ -75,7 +78,6 @@ def store_parsed_data(parsed_data: dict, mode: str, pset_config: dict):
     st.session_state.mode_project = mode
     st.session_state.ifc_parsed = True
 
-    # Reset global filters when new file loaded
     st.session_state.filter_storeys = []
     st.session_state.filter_classes = []
     st.session_state.filter_status = "Alle"

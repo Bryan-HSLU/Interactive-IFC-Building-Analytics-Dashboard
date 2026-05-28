@@ -32,8 +32,8 @@ MATERIAL_ALIASES = [
     # Gypsum / plaster
     (["gipskarton", "gipsplatte", "rigips", "knauf"], "gypsum_board"),
     (["gips", "gypsum"], "gypsum"),
-    (["verputz", "putz", "plaster", "rabitz"], "plaster"),
-    (["mörtel", "mortar"], "mortar"),
+    (["verputz", "putz", "plaster", "rabitz", "bekleidung"], "plaster"),
+    (["mörtel", "mortar", "unterlagsboden"], "mortar"),
     # Stone
     (["kalkstein", "limestone"], "limestone"),
     (["sandstein", "sandstone"], "sandstone"),
@@ -45,7 +45,7 @@ MATERIAL_ALIASES = [
     (["linoleum", "lino"], "linoleum"),
     (["pvc", "kunststoff", "plastik"], "pvc"),
     (["lehm", "clay", "stampflehm"], "clay"),
-    (["kork", "cork"], "cork"),
+    (["kork", "cork"], "kork"),
     (["stroh", "straw"], "straw"),
     (["mineralfaser", "mineral fibre"], "mineral_fibre"),
     (["faserzement", "eternit", "fibre cement"], "fibre_cement"),
@@ -68,11 +68,34 @@ def load_factors(csv_path: str) -> pd.DataFrame:
 
 
 def _normalize(s: str) -> str:
-    """Lowercase, strip, collapse whitespace, remove special chars except space."""
-    s = str(s).lower().strip()
+    """Decode STEP ISO 10303 and ArchiCAD Unicode hex escapes, then lowercase, strip, and clean."""
+    s = str(s).strip()
+
+    # 1. Decode ArchiCAD hex escapes like \X\E4 -> \xe4 -> ä
+    def repl_x(m):
+        try:
+            return bytes.fromhex(m.group(1)).decode('latin1')
+        except Exception:
+            return m.group(0)
+    s = re.sub(r'\\X\\([0-9A-Fa-f]{2})', repl_x, s)
+
+    # 2. Decode STEP ISO 10303 unicode escapes like \X2\00E4\X0\ -> ä
+    def repl_x2(m):
+        try:
+            hex_str = m.group(1)
+            chars = []
+            for i in range(0, len(hex_str), 4):
+                chars.append(chr(int(hex_str[i:i+4], 16)))
+            return "".join(chars)
+        except Exception:
+            return m.group(0)
+    s = re.sub(r'\\X2\\([0-9A-Fa-f]{4,})\\X0\\', repl_x2, s)
+
+    s = s.lower()
     s = re.sub(r"[_\-/\\|,;:()]", " ", s)
     s = re.sub(r"\s+", " ", s)
-    return s
+    return s.strip()
+
 
 
 def _match_material(material_name: str, factors_df: pd.DataFrame):

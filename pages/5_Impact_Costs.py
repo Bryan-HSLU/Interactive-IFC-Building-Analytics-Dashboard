@@ -4,6 +4,7 @@ from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import create_co2_treemap, create_cost_bar, create_waterfall_co2, create_sankey_material, create_slope_co2, apply_default_layout
 from src.constants import COLORS
+from src.impact_calculator import get_match_coverage, get_unmatched_materials
 import plotly.graph_objects as go
 
 init_session_state()
@@ -34,6 +35,17 @@ render_cross_filter_reset("page5", CF_KEYS)
 if element_df is None or element_df.empty:
     st.warning("Keine Elementdaten verfügbar.")
     st.stop()
+
+# KBOB Coverage & Unmatched Materials list
+coverage = get_match_coverage(element_df)
+if coverage < 100:
+    unmatched = get_unmatched_materials(element_df)
+    if unmatched:
+        with st.expander(f"⚠️ {100 - coverage:.0f}% der Elemente ohne KBOB-Zuweisung ({len(unmatched)} Materialien)", expanded=False):
+            st.write("Die folgenden Materialien aus Ihrem Modell konnten nicht zugeordnet werden und haben derzeit keinen CO₂-Wert:")
+            st.dataframe(pd.DataFrame(unmatched, columns=["Nicht zugeordnete Materialien"]), use_container_width=True, hide_index=True)
+            st.caption("Tipp: Fügen Sie diese Begriffe oder Teile davon der `MATERIAL_ALIASES`-Liste in `src/impact_calculator.py` hinzu.")
+
 
 # KPIs
 total_co2 = pd.to_numeric(element_df.get("co2e_total", pd.Series(dtype=float)), errors="coerce").sum()

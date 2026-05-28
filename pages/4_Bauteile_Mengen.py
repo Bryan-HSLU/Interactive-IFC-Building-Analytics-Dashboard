@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from streamlit_plotly_events import plotly_events
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
@@ -45,14 +43,13 @@ _u_mass   = st.session_state.get("unit_mass",   "kg")
 CF_KEYS = ["cf_page4_class", "cf_page4_material"]
 render_cross_filter_reset("page4", CF_KEYS)
 
-# Cross-filter hint
 cf_class = st.session_state.get("cf_page4_class")
 cf_mat   = st.session_state.get("cf_page4_material")
 if cf_class or cf_mat:
     parts = []
     if cf_class: parts.append(f"Class: **{cf_class}**")
     if cf_mat:   parts.append(f"Material: **{cf_mat}**")
-    st.info("Active filter -- " + " | ".join(parts) + "  \u00a0\u00a0*(click same bar again to deselect, or use reset above)*")
+    st.info("Active filter -- " + " | ".join(parts) + "  (click same bar again to deselect, or use reset above)")
 
 def _apply_cf(df):
     cf_c = st.session_state.get("cf_page4_class")
@@ -84,9 +81,10 @@ elif isinstance(storey_df, pd.DataFrame) and not storey_df.empty:
 
 with col_left:
     fig_class_bar = create_class_bar_horizontal(element_df)
-    sel_class = plotly_events(fig_class_bar, click_event=True, key="cf_p4_class_bar", override_height=380)
-    if sel_class:
-        clicked = sel_class[0].get("y") or sel_class[0].get("x")
+    ev_class = st.plotly_chart(fig_class_bar, on_select="rerun", key="cf_p4_class_bar", use_container_width=True)
+    if ev_class and ev_class.selection.points:
+        pt = ev_class.selection.points[0]
+        clicked = pt.get("y") or pt.get("x") or pt.get("label")
         if clicked:
             if clicked == st.session_state.get("cf_page4_class"):
                 st.session_state.cf_page4_class = None
@@ -96,9 +94,10 @@ with col_left:
 
 with col_right:
     fig_storey_stack = create_class_storey_stacked(element_df, storey_order)
-    sel_storey_stack = plotly_events(fig_storey_stack, click_event=True, key="cf_p4_storey_stack", override_height=380)
-    if sel_storey_stack:
-        clicked_val = sel_storey_stack[0].get("y") or sel_storey_stack[0].get("x")
+    ev_storey = st.plotly_chart(fig_storey_stack, on_select="rerun", key="cf_p4_storey_stack", use_container_width=True)
+    if ev_storey and ev_storey.selection.points:
+        pt = ev_storey.selection.points[0]
+        clicked_val = pt.get("y") or pt.get("x") or pt.get("label")
         if clicked_val:
             if clicked_val == st.session_state.get("cf_page4_class"):
                 st.session_state.cf_page4_class = None
@@ -113,9 +112,10 @@ unit = st.session_state.get("unit_volume", "m\u00b3")
 
 with col_mat:
     fig_mat = create_material_quantity_bar(element_df, unit)
-    sel_mat = plotly_events(fig_mat, click_event=True, key="cf_p4_mat_bar", override_height=380)
-    if sel_mat:
-        clicked_mat = sel_mat[0].get("y") or sel_mat[0].get("x")
+    ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="cf_p4_mat_bar", use_container_width=True)
+    if ev_mat and ev_mat.selection.points:
+        pt = ev_mat.selection.points[0]
+        clicked_mat = pt.get("y") or pt.get("x") or pt.get("label")
         if clicked_mat:
             if clicked_mat == st.session_state.get("cf_page4_material"):
                 st.session_state.cf_page4_material = None
@@ -128,18 +128,16 @@ with col_div:
         fig_div = create_diverging_bar(element_df)
     else:
         fig_div = create_material_quantity_bar(element_df, "m\u00b2" if "area_m2" in element_df.columns else unit)
-    plotly_events(fig_div, click_event=True, key="cf_p4_div_bar", override_height=380)
+    st.plotly_chart(fig_div, use_container_width=True, key="cf_p4_div_bar")
 
 # -- Section D: Hierarchy & Comparison ----------------------------------------
 st.divider()
 st.subheader("Hierarchy & Comparison")
 col_tree4, col_grp = st.columns(2)
 with col_tree4:
-    fig_etree = create_element_treemap(element_df)
-    st.plotly_chart(fig_etree, use_container_width=True)
+    st.plotly_chart(create_element_treemap(element_df), use_container_width=True)
 with col_grp:
-    fig_grp = create_grouped_bar(element_df, mode)
-    st.plotly_chart(fig_grp, use_container_width=True)
+    st.plotly_chart(create_grouped_bar(element_df, mode), use_container_width=True)
 
 # -- Section E: Volume Distribution -------------------------------------------
 st.divider()

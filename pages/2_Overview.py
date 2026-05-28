@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from streamlit_plotly_events import plotly_events
 from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
 from src.filters import render_sidebar
 from src.chart_factory import (
@@ -37,68 +36,54 @@ element_df = get_element_df(filtered=True)
 space_df = get_space_df(filtered=True)
 has_spaces = space_df is not None and not space_df.empty
 
-# ── Mode Badge ────────────────────────────────────────────────────────────────
+# -- Mode Badge ----------------------------------------------------------------
 if mode == "neubau":
-    mode_label = "New Build"
-    mode_bg = "#D5EEF0"
-    mode_border = COLORS["neubau"]
+    mode_label, mode_bg, mode_border = "New Build", "#D5EEF0", COLORS["neubau"]
 else:
-    mode_label = "Renovation"
-    mode_bg = "#EDE3D5"
-    mode_border = COLORS["abbruch"]
+    mode_label, mode_bg, mode_border = "Renovation", "#EDE3D5", COLORS["abbruch"]
 
 st.markdown(
     f'<div style="display:inline-block;background:{mode_bg};border-left:4px solid {mode_border};'
     f'border-radius:4px;padding:4px 14px;font-weight:600;margin-bottom:8px;font-size:14px;">'
-    f'{mode_label}</div>',
-    unsafe_allow_html=True,
+    f'{mode_label}</div>', unsafe_allow_html=True,
 )
 st.title("Overview")
 
-# ── KPI Row ───────────────────────────────────────────────────────────────────
+# -- KPI Row -------------------------------------------------------------------
 _, quality_summary = get_quality_data()
 summary = get_impact_summary(element_df, space_df, mode)
 score = quality_summary.get("score", 0) if quality_summary else 0
 co2_per_m2 = summary.get("co2e_per_m2") if summary else None
 
 kpi = st.columns(5)
-with kpi[0]:
-    kpi_card("Elements", f"{len(element_df):,}" if element_df is not None else "\u2013")
-with kpi[1]:
-    kpi_card("Rooms", f"{len(space_df):,}" if has_spaces else "n/a")
+with kpi[0]: kpi_card("Elements", f"{len(element_df):,}" if element_df is not None else "\u2013")
+with kpi[1]: kpi_card("Rooms", f"{len(space_df):,}" if has_spaces else "n/a")
 with kpi[2]:
-    kpi_card(
-        "Storeys",
-        f"{element_df['storey'].nunique():,}" if element_df is not None and "storey" in element_df.columns else "\u2013"
-    )
+    kpi_card("Storeys", f"{element_df['storey'].nunique():,}" if element_df is not None and "storey" in element_df.columns else "\u2013")
 with kpi[3]:
     if co2_per_m2:
         diff = co2_per_m2 - SIA_2032_LIMIT
-        if diff <= 0:
-            d_color = COLORS["error_ok"]
-            d_text = f"\u2193 {abs(diff):.1f} below SIA 2032"
-        else:
-            d_color = COLORS["error_warning"]
-            d_text = f"\u2191 {diff:.1f} above SIA 2032"
+        d_color = COLORS["error_ok"] if diff <= 0 else COLORS["error_warning"]
+        d_text = f"{'below' if diff<=0 else 'above'} SIA 2032 limit"
         kpi_card("CO\u2082e / m\u00b2 NFA", f"{co2_per_m2:.1f} kg/m\u00b2", d_text, d_color)
     else:
-        kpi_card("CO\u2082e / m\u00b2 NFA", "\u2013", f"Limit: {SIA_2032_LIMIT:.0f} kg/m\u00b2\u00b7a", COLORS["text_light"])
+        kpi_card("CO\u2082e / m\u00b2 NFA", "\u2013", f"Limit: {SIA_2032_LIMIT:.0f} kg/m\u00b2", COLORS["text_light"])
 with kpi[4]:
     q_color = COLORS["error_ok"] if score >= 80 else COLORS["error_warning"] if score >= 50 else COLORS["error_critical"]
     kpi_card("Model Quality", f"{score:.0f}%", delta_color=q_color)
 
 st.divider()
 
-# ── Row 1: Main Charts ─────────────────────────────────────────────────────────
+# -- Row 1: Main Charts --------------------------------------------------------
 col_left, col_right = st.columns(2)
 
 if has_spaces:
-    # IFC has rooms: show Sunburst + Bubble
     with col_left:
         fig_sun = create_room_sunburst(space_df)
-        sel_sun = plotly_events(fig_sun, click_event=True, key="ov_sunburst", override_height=420)
-        if sel_sun:
-            clicked_label = sel_sun[0].get("label") or sel_sun[0].get("id") or ""
+        ev_sun = st.plotly_chart(fig_sun, on_select="rerun", key="ov_sunburst", use_container_width=True)
+        if ev_sun and ev_sun.selection.points:
+            pt = ev_sun.selection.points[0]
+            clicked_label = pt.get("label") or pt.get("id") or ""
             known_storeys = space_df["storey"].dropna().unique().tolist() if "storey" in space_df.columns else []
             if clicked_label in known_storeys:
                 prev = st.session_state.get("overview_storey")
@@ -108,33 +93,29 @@ if has_spaces:
         sel_storey = st.session_state.get("overview_storey")
         df_bubble = space_df[space_df["storey"] == sel_storey] if sel_storey and "storey" in space_df.columns else space_df
         if sel_storey:
-            st.caption(f"\ud83d\udd0d Filtered: Storey **{sel_storey}**")
-        fig_bubble = create_room_bubble(df_bubble)
-        st.plotly_chart(fig_bubble, use_container_width=True, key="ov_bubble")
+            st.caption(f"Filtered: Storey **{sel_storey}**")
+        st.plotly_chart(create_room_bubble(df_bubble), use_container_width=True, key="ov_bubble")
     if st.session_state.get("overview_storey"):
-        if st.button("\u00d7 Reset storey filter", key="ov_reset"):
+        if st.button("Reset storey filter", key="ov_reset"):
             st.session_state.overview_storey = None
             st.rerun()
 else:
-    # No rooms: show Material breakdown + IFC Class breakdown
     with col_left:
         st.subheader("Materials by Volume")
         if element_df is not None and not element_df.empty:
-            fig_mat = create_material_quantity_bar(element_df, "m\u00b3")
-            st.plotly_chart(fig_mat, use_container_width=True, key="ov_mat_bar")
+            st.plotly_chart(create_material_quantity_bar(element_df, "m\u00b3"), use_container_width=True, key="ov_mat_bar")
         else:
             st.info("No element data available.")
     with col_right:
         st.subheader("Elements by IFC Class")
         if element_df is not None and not element_df.empty:
-            fig_cls = create_class_bar_horizontal(element_df)
-            st.plotly_chart(fig_cls, use_container_width=True, key="ov_cls_bar")
+            st.plotly_chart(create_class_bar_horizontal(element_df), use_container_width=True, key="ov_cls_bar")
         else:
             st.info("No element data available.")
 
 st.divider()
 
-# ── Row 2: CO2-Treemap + Status-Donut (Umbau) ─────────────────────────────────
+# -- Row 2: CO2 Treemap + Status Donut -----------------------------------------
 if mode == "umbau" and element_df is not None and "status" in element_df.columns:
     col_tree, col_donut = st.columns([3, 2])
 else:
@@ -144,8 +125,7 @@ else:
 with col_tree:
     if element_df is not None and not element_df.empty:
         st.subheader("CO\u2082 Impact by Material")
-        fig_tree = create_co2_treemap(element_df)
-        st.plotly_chart(fig_tree, use_container_width=True, key="ov_co2tree")
+        st.plotly_chart(create_co2_treemap(element_df), use_container_width=True, key="ov_co2tree")
     else:
         st.info("No CO\u2082 data available.")
 
@@ -157,10 +137,7 @@ if col_donut is not None:
             labels=status_counts.index.tolist(),
             values=status_counts.values.tolist(),
             hole=0.58,
-            marker=dict(
-                colors=[STATUS_COLORS.get(s, COLORS["neutral"]) for s in status_counts.index],
-                line=dict(color="white", width=2),
-            ),
+            marker=dict(colors=[STATUS_COLORS.get(s, COLORS["neutral"]) for s in status_counts.index], line=dict(color="white", width=2)),
             textinfo="label+percent",
             hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Share: %{percent}<extra></extra>",
         ))
@@ -178,5 +155,4 @@ if col_donut is not None:
 
 if mode == "umbau" and element_df is not None and "status" in element_df.columns:
     st.divider()
-    fig_status = create_status_distribution(element_df)
-    st.plotly_chart(fig_status, use_container_width=True, key="ov_status_dist")
+    st.plotly_chart(create_status_distribution(element_df), use_container_width=True, key="ov_status_dist")

@@ -4,6 +4,7 @@ from streamlit_plotly_events import plotly_events
 from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
+    create_quality_gauge,
     create_error_bar,
     create_status_distribution, create_pset_matrix_heatmap,
     create_upset_plot,
@@ -42,7 +43,7 @@ st.title("Quality Check")
 CF_KEYS = ["cf_page6_error_cat", "cf_page6_status_class"]
 render_cross_filter_reset("page6", CF_KEYS)
 
-# ── Section A: Quality Score ────────────────────────────────────────────────
+# ── Section A: Quality Score ──────────────────────────────────────────────
 col_score, col_traffic = st.columns(2)
 
 score = quality_summary.get("score", 0)
@@ -51,18 +52,12 @@ total_elements = quality_summary.get("total_elements", 0)
 total_spaces = quality_summary.get("total_spaces", 0)
 
 with col_score:
-    score_color = "#D6EAF8" if score >= 80 else "#FDEBD0" if score >= 50 else "#F9EBEA"
-    score_text_color = "#2980B9" if score >= 80 else "#E67E22"
-    st.markdown(
-        f'<div style="background:{score_color};border-radius:10px;padding:32px 24px;text-align:center;">'
-        f'<div style="font-size:3.5rem;font-weight:700;color:{score_text_color};">{score:.0f}%</div>'
-        f'<div style="font-size:1rem;color:#7F8C8D;margin-top:4px;">Modellqualität</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    # Gauge chart instead of plain HTML div
+    fig_gauge = create_quality_gauge(score)
+    st.plotly_chart(fig_gauge, use_container_width=True)
 
 with col_traffic:
-    st.subheader("Qualitätsindikatoren")
+    st.subheader("Quality Indicators")
 
     def _traffic_light(count: int, label: str, show_always: bool = True):
         if not show_always and count == 0:
@@ -72,11 +67,11 @@ with col_traffic:
             color = "#D6EAF8"
             weight = "600"
         elif count <= 10:
-            badge = "Warnung"
+            badge = "Warning"
             color = "#FCF3CF"
             weight = "600"
         else:
-            badge = "Kritisch"
+            badge = "Critical"
             color = "#FDEBD0"
             weight = "700"
         st.markdown(
@@ -85,12 +80,12 @@ with col_traffic:
             unsafe_allow_html=True,
         )
 
-    _traffic_light(error_counts.get("missing_material", 0), "Elemente ohne Material")
-    _traffic_light(error_counts.get("missing_quantity", 0), "Elemente ohne Mengenangaben")
-    _traffic_light(error_counts.get("missing_usage", 0), "Räume ohne Nutzungszuweisung")
-    _traffic_light(error_counts.get("missing_storey", 0), "Elemente ohne Geschoss-Zuordnung")
+    _traffic_light(error_counts.get("missing_material", 0), "Elements without material")
+    _traffic_light(error_counts.get("missing_quantity", 0), "Elements without quantities")
+    _traffic_light(error_counts.get("missing_usage", 0), "Spaces without usage assignment")
+    _traffic_light(error_counts.get("missing_storey", 0), "Elements without storey assignment")
     if mode == "umbau":
-        _traffic_light(error_counts.get("missing_status", 0), "Elemente ohne Status")
+        _traffic_light(error_counts.get("missing_status", 0), "Elements without status")
 
 # ── Section B: Error Analysis ───────────────────────────────────────────────
 st.divider()
@@ -123,60 +118,58 @@ with col_status:
                 st.rerun()
     else:
         # Neubau mode: Pset completeness per class as simple metric
-        st.subheader("Pset-Vollständigkeit nach IFC-Klasse")
+        st.subheader("Pset Completeness by IFC Class")
         if not element_df.empty and "psets" in element_df.columns:
             pset_counts = element_df.groupby("ifc_class")["psets"].apply(
                 lambda x: (x.apply(lambda p: len(p) > 0 if isinstance(p, dict) else False)).sum()
             ).reset_index()
-            pset_counts.columns = ["IFC-Klasse", "Elemente mit Psets"]
+            pset_counts.columns = ["IFC Class", "Elements with Psets"]
             total_per_class = element_df["ifc_class"].value_counts().reset_index()
-            total_per_class.columns = ["IFC-Klasse", "Gesamt"]
-            merged = pset_counts.merge(total_per_class, on="IFC-Klasse")
-            merged["Vollständigkeit (%)"] = (merged["Elemente mit Psets"] / merged["Gesamt"] * 100).round(1)
+            total_per_class.columns = ["IFC Class", "Total"]
+            merged = pset_counts.merge(total_per_class, on="IFC Class")
+            merged["Completeness (%)"] = (merged["Elements with Psets"] / merged["Total"] * 100).round(1)
             st.dataframe(merged, use_container_width=True, hide_index=True)
         else:
-            st.info("Keine Pset-Daten verfügbar.")
+            st.info("No Pset data available.")
 
 # ── Section C: UpSet Plot ───────────────────────────────────────────────────
 st.divider()
-st.subheader("Fehler-Schnittmengen (UpSet Plot)")
+st.subheader("Error Co-occurrence (UpSet Plot)")
 st.caption(
-    "Welche Fehlerkombinationen treten gemeinsam auf? "
-    "Jede Spalte steht für eine Kombination von Fehlern. "
-    "Die Balken oben zeigen wie viele Elemente diese Kombination haben. "
-    "Die Punkte unten zeigen welche Fehlertypen kombiniert auftreten."
+    "Which error combinations appear together? "
+    "Each column represents a combination of errors. "
+    "The bars above show how many elements have that combination. "
+    "The dots below indicate which error types are combined."
 )
 if error_df is not None and not error_df.empty:
     fig_upset = create_upset_plot(error_df)
     st.plotly_chart(fig_upset, use_container_width=True)
 else:
-    st.success("Keine Fehler — UpSet Plot nicht notwendig.")
+    st.success("✅ No errors found — UpSet Plot not needed.")
 
-# ── Section D: Pset Matrix ──────────────────────────────────────────────────
+# ── Section D: Pset Matrix ────────────────────────────────────────────────────
 st.divider()
-st.subheader("Pset-Verfügbarkeitsmatrix")
-st.caption("Blau = Pset vorhanden, Grau = fehlt")
+st.subheader("Pset Availability Matrix")
+st.caption("Blue = Pset present · Gray = missing")
 
 if not element_df.empty:
     pset_matrix = build_pset_matrix(element_df)
     if pset_matrix is not None and not pset_matrix.empty:
-        # Limit columns for readability
         if len(pset_matrix.columns) > 15:
             top_cols = pset_matrix.sum().nlargest(15).index
             pset_matrix = pset_matrix[top_cols]
         fig_pset = create_pset_matrix_heatmap(pset_matrix)
         st.plotly_chart(fig_pset, use_container_width=True)
     else:
-        st.info("Keine Pset-Daten für Matrix verfügbar.")
+        st.info("No Pset data available for matrix.")
 
-# ── Section D: Error Detail Table ──────────────────────────────────────────
+# ── Section E: Error Detail Table ──────────────────────────────────────────────
 st.divider()
-st.subheader("Fehlerdetails")
+st.subheader("Error Details")
 
 if error_df is not None and not error_df.empty:
     table_df = error_df.copy()
 
-    # Apply cross-filters
     cf_cat = st.session_state.get("cf_page6_error_cat")
     cf_cls = st.session_state.get("cf_page6_status_class")
 
@@ -186,33 +179,32 @@ if error_df is not None and not error_df.empty:
         table_df = table_df[table_df["ifc_class"] == cf_cls]
 
     col_rename = {
-        "element_id": "Element-ID",
-        "ifc_class": "IFC-Klasse",
-        "storey": "Geschoss",
-        "error_type": "Fehlertyp",
-        "severity": "Schweregrad",
-        "description": "Beschreibung",
+        "element_id": "Element ID",
+        "ifc_class": "IFC Class",
+        "storey": "Storey",
+        "error_type": "Error Type",
+        "severity": "Severity",
+        "description": "Description",
     }
     display_df = table_df.rename(columns=col_rename)
 
     def _color_severity(val):
-        if val == "kritisch":
-            return "color: #C0392B; font-weight: bold"
-        elif val == "Warnung":
+        if val == "critical":
+            return "color: #A04000; font-weight: bold"
+        elif val == "warning":
             return "color: #E67E22"
         return ""
 
-    if "Schweregrad" in display_df.columns:
+    if "Severity" in display_df.columns:
         st.dataframe(
-            display_df.style.applymap(_color_severity, subset=["Schweregrad"]),
+            display_df.style.applymap(_color_severity, subset=["Severity"]),
             use_container_width=True,
             hide_index=True,
         )
     else:
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-    # Warning if status data missing (Umbau mode)
     if mode == "umbau" and error_counts.get("missing_status", 0) > 0:
-        st.warning("Berechnungen auf Seite 5 sind möglicherweise unvollständig da Statusdaten fehlen.")
+        st.warning("⚠️ Calculations on Page 5 may be incomplete due to missing status data.")
 else:
-    st.success("Keine Fehler gefunden.")
+    st.success("✅ No errors found.")

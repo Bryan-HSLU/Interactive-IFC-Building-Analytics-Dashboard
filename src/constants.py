@@ -6,9 +6,9 @@ COLORS = {
     "primary": "#2980B9",
     "neutral": "#BDC3C7",
     "unknown": "#95A5A6",
-    "error_ok": "#2980B9",      # Blue (was green — red/green removed)
-    "error_warning": "#E67E22", # Orange
-    "error_critical": "#E67E22",# Orange bold (differentiated by text weight)
+    "error_ok": "#2980B9",       # Blue — no issues
+    "error_warning": "#E67E22",  # Orange — minor issues (warm, attention)
+    "error_critical": "#A04000", # Dark orange-brown — critical issues (same hue family, darker = more severe)
     "text": "#2C3E50",
     "text_light": "#7F8C8D",
     "grid": "#ECF0F1",
@@ -22,7 +22,7 @@ STATUS_COLORS = {
     "Nicht gefunden": "#BDC3C7",
 }
 
-# Max 7 distinct categories (Unterrichtsprinzip)
+# Max 7 distinct categories (cognitive load principle)
 CATEGORICAL_COLORS = [
     "#5DADE2",  # Light blue (distinct from primary #2980B9)
     "#E67E22",  # Orange

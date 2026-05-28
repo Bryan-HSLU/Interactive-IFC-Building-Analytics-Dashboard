@@ -52,7 +52,7 @@ if cf_class or cf_mat:
     parts = []
     if cf_class: parts.append(f"Class: **{cf_class}**")
     if cf_mat:   parts.append(f"Material: **{cf_mat}**")
-    st.info("\ud83d\udd0d Active filter \u2014 " + " | ".join(parts) + "  \u00a0\u00a0*(click same bar again to deselect, or use reset above)*")
+    st.info("Active filter -- " + " | ".join(parts) + "  \u00a0\u00a0*(click same bar again to deselect, or use reset above)*")
 
 def _apply_cf(df):
     cf_c = st.session_state.get("cf_page4_class")
@@ -63,7 +63,7 @@ def _apply_cf(df):
         df = df[df["material"] == cf_m]
     return df
 
-# ── KPI Cards ──────────────────────────────────────────────────────────────────
+# -- KPI Cards -----------------------------------------------------------------
 vol_sum = pd.to_numeric(element_df.get("volume_m3", pd.Series(dtype=float)), errors="coerce").sum(skipna=True)
 kpi = st.columns(4)
 kpi[0].metric("IFC Classes", f"{element_df['ifc_class'].nunique()}")
@@ -71,8 +71,8 @@ kpi[1].metric("Total Elements", f"{len(element_df):,}")
 kpi[2].metric("Total Volume", f"{vol_sum:,.1f} m\u00b3")
 kpi[3].metric("Materials", f"{element_df['material'].nunique()}" if "material" in element_df.columns else "\u2013")
 
-# ── Section B: Class Analysis ──────────────────────────────────────────────────
-st.caption("\ud83d\udca1 Click a bar to filter all charts and the table below. Click again to deselect.")
+# -- Section B: Class Analysis -------------------------------------------------
+st.caption("Click a bar to filter all charts and the table below. Click the same bar again to deselect.")
 col_left, col_right = st.columns(2)
 
 storey_df = st.session_state.get("storey_df")
@@ -85,7 +85,6 @@ elif isinstance(storey_df, pd.DataFrame) and not storey_df.empty:
 with col_left:
     fig_class_bar = create_class_bar_horizontal(element_df)
     sel_class = plotly_events(fig_class_bar, click_event=True, key="cf_p4_class_bar", override_height=380)
-    # Persist cross-filter: only update state on actual click (non-empty event)
     if sel_class:
         clicked = sel_class[0].get("y") or sel_class[0].get("x")
         if clicked:
@@ -107,7 +106,7 @@ with col_right:
                 st.session_state.cf_page4_class = clicked_val
             st.rerun()
 
-# ── Section C: Material Quantities ────────────────────────────────────────────
+# -- Section C: Material Quantities --------------------------------------------
 st.divider()
 col_mat, col_div = st.columns(2)
 unit = st.session_state.get("unit_volume", "m\u00b3")
@@ -131,7 +130,7 @@ with col_div:
         fig_div = create_material_quantity_bar(element_df, "m\u00b2" if "area_m2" in element_df.columns else unit)
     plotly_events(fig_div, click_event=True, key="cf_p4_div_bar", override_height=380)
 
-# ── Section D: Hierarchy & Comparison ────────────────────────────────────────
+# -- Section D: Hierarchy & Comparison ----------------------------------------
 st.divider()
 st.subheader("Hierarchy & Comparison")
 col_tree4, col_grp = st.columns(2)
@@ -142,7 +141,7 @@ with col_grp:
     fig_grp = create_grouped_bar(element_df, mode)
     st.plotly_chart(fig_grp, use_container_width=True)
 
-# ── Section E: Volume Distribution ────────────────────────────────────────────
+# -- Section E: Volume Distribution -------------------------------------------
 st.divider()
 st.subheader("Volume Distribution")
 tab_vio, tab_hist4, tab_rain = st.tabs(["Violin", "Histogram", "Raincloud"])
@@ -153,12 +152,12 @@ with tab_hist4:
 with tab_rain:
     st.plotly_chart(create_raincloud_plot(element_df), use_container_width=True)
 
-# ── Section F: Quantity Takeoff Table ─────────────────────────────────────────
+# -- Section F: Quantity Takeoff Table ----------------------------------------
 st.divider()
 st.subheader("Quantity Takeoff")
 
 table_df = _apply_cf(element_df.copy())
-search = st.text_input("Search (type or material)", key="search_elements", placeholder="e.g. Concrete, Wall\u2026")
+search = st.text_input("Search (type or material)", key="search_elements", placeholder="e.g. Concrete, Wall...")
 if search:
     mask = pd.Series([False] * len(table_df))
     for col_search in ["type_name", "material", "ifc_class"]:

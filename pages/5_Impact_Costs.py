@@ -10,9 +10,7 @@ from src.chart_factory import (
     create_sankey_material,
     create_slope_co2,
 )
-from src.impact_calculator import get_impact_summary
-from src.ui_helpers import kpi_card, apply_unit_conversion, unit_caption
-from src.constants import SIA_2032_LIMIT, COLORS
+from src.constants import SIA_2032_LIMIT
 
 init_session_state()
 
@@ -23,8 +21,8 @@ except FileNotFoundError:
     pass
 
 element_df_raw = get_element_df(filtered=False)
-space_df_raw = get_space_df(filtered=False)
-mode = st.session_state.get("mode_project", "")
+space_df_raw   = get_space_df(filtered=False)
+mode           = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
@@ -32,179 +30,133 @@ if not st.session_state.get("ifc_parsed"):
     st.stop()
 
 element_df = get_element_df(filtered=True)
-space_df = get_space_df(filtered=True)
 
-if element_df is None or element_df.empty:
-    st.title("Impact & Costs")
-    st.warning("No element data available.")
-    st.stop()
+st.title("Impact & Kosten")
+st.caption("CO₂-Emissionen und Kosten nach Material und Elementtyp.")
 
-st.title("Impact & Costs")
-
-_u_area   = st.session_state.get("unit_area",   "m\u00b2")
-_u_volume = st.session_state.get("unit_volume", "m\u00b3")
-_u_mass   = st.session_state.get("unit_mass",   "kg")
-
-CF_KEYS = ["cf_page5_material", "cf_page5_treemap"]
+CF_KEYS = ["cf_page5_material"]
 render_cross_filter_reset("page5", CF_KEYS)
 
-summary = get_impact_summary(element_df, space_df, mode)
+if element_df is None or element_df.empty:
+    st.warning("Keine Elementdaten verfügbar.")
+    st.stop()
 
-coverage = summary.get("coverage_pct", 0)
-if coverage == 0:
-    st.warning("No KBOB factors could be matched. Check material names in the model.")
-elif coverage < 100:
-    st.info(f"{coverage:.0f}% of elements matched to KBOB factors.")
+# ── KPI-Karten ────────────────────────────────────────────────────────────────
+st.subheader("Kennzahlen")
 
-cf_mat5  = st.session_state.get("cf_page5_material")
-cf_tree5 = st.session_state.get("cf_page5_treemap")
-if cf_mat5 or cf_tree5:
-    active = cf_mat5 or cf_tree5
-    st.info(f"Active filter -- Material: **{active}**  (use reset above to clear)")
+total_co2 = 0.0
+total_vol = 0.0
+if "co2e_total" in element_df.columns:
+    total_co2 = pd.to_numeric(element_df["co2e_total"], errors="coerce").sum()
+if "volume_m3" in element_df.columns:
+    total_vol = pd.to_numeric(element_df["volume_m3"], errors="coerce").sum()
+co2_intensity = (total_co2 / total_vol) if total_vol > 0 else 0.0
 
-def _apply_cf(df):
-    cf_mat = st.session_state.get("cf_page5_material")
-    cf_tree = st.session_state.get("cf_page5_treemap")
-    if cf_mat and "material" in df.columns:
-        df = df[df["material"] == cf_mat]
-    elif cf_tree and "material" in df.columns:
-        df = df[df["material"] == cf_tree]
-    return df
+total_cost = 0.0
+if "cost_chf" in element_df.columns:
+    total_cost = pd.to_numeric(element_df["cost_chf"], errors="coerce").sum()
 
-# -- Tabs ----------------------------------------------------------------------
-tab_co2, tab_cost, tab_zirk = st.tabs(["CO2 & Energy", "Costs", "Circularity"])
+cols = st.columns(4)
+cols[0].metric("CO₂e total",       f"{total_co2:,.0f} kg"  if total_co2 > 0 else "–")
+cols[1].metric("CO₂e / m³",        f"{co2_intensity:,.1f} kg/m³" if co2_intensity > 0 else "–")
+cols[2].metric("Volumen total",     f"{total_vol:,.1f} m³"  if total_vol > 0 else "–")
+cols[3].metric("Kosten total",      f"CHF {total_cost:,.0f}" if total_cost > 0 else "–")
 
-with tab_co2:
-    kpi = st.columns(4)
-    with kpi[0]:
-        kpi_card("Total CO2e", f"{summary['co2e_total']:,.0f} kg" if summary["co2e_total"] else "\u2013")
-    with kpi[1]:
-        co2_m2 = summary.get("co2e_per_m2")
-        if co2_m2:
-            diff = co2_m2 - SIA_2032_LIMIT
-            d_color = COLORS["error_ok"] if diff <= 0 else COLORS["error_warning"]
-            d_text = f"{'below' if diff<=0 else 'above'} SIA 2032 ({SIA_2032_LIMIT:.0f} kg/m\u00b2)"
-            kpi_card("CO2e per m\u00b2 NFA", f"{co2_m2:.1f} kg/m\u00b2", d_text, d_color)
-        else:
-            kpi_card("CO2e per m\u00b2 NFA", "\u2013")
-    with kpi[2]:
-        kpi_card("Embodied Energy", f"{summary['grey_energy_total']:,.0f} kWh" if summary["grey_energy_total"] else "\u2013")
-    with kpi[3]:
-        kpi_card("Embodied Energy/m\u00b2", f"{summary['energy_per_m2']:.1f} kWh/m\u00b2" if summary.get("energy_per_m2") else "\u2013")
-
-    if summary.get("co2e_per_m2"):
-        co2_m2 = summary["co2e_per_m2"]
-        pct = co2_m2 / SIA_2032_LIMIT * 100
-        sia_bg = "#D5EEF0" if co2_m2 <= SIA_2032_LIMIT else "#FDF3DC"
-        sia_border = COLORS["error_ok"] if co2_m2 <= SIA_2032_LIMIT else COLORS["error_warning"]
-        sia_status = "Within limit" if co2_m2 <= SIA_2032_LIMIT else "Limit exceeded"
-        st.markdown(
-            f'<div style="background:{sia_bg};border-left:4px solid {sia_border};'
-            f'border-radius:4px;padding:8px 14px;margin:8px 0;">'
-            f'<b>SIA 2032:</b> {sia_status} \u2014 '
-            f'{co2_m2:.1f} / {SIA_2032_LIMIT:.0f} kg CO2e/m\u00b2\u00b7a = {pct:.0f}%</div>',
-            unsafe_allow_html=True,
-        )
-
-    if mode == "umbau" and "status" in element_df.columns:
-        sub = st.columns(2)
-        co2_neubau = pd.to_numeric(
-            element_df[element_df["status"] == "Neubau"].get("co2e_total", pd.Series(dtype=float)), errors="coerce"
-        ).sum()
-        co2_abbruch = pd.to_numeric(
-            element_df[element_df["status"] == "Abbruch"].get("co2e_total", pd.Series(dtype=float)), errors="coerce"
-        ).sum()
-        with sub[0]: kpi_card("CO2e New Build", f"{co2_neubau:,.0f} kg")
-        with sub[1]: kpi_card("CO2e Demolition", f"{co2_abbruch:,.0f} kg")
-
-    st.divider()
-
-    # -- Chart A: CO2 Bar (interactive, cross-filters treemap + table) ----------
-    # -- Chart B: CO2 Treemap (interactive, cross-filters bar + table) ----------
-    st.caption("Click a bar or treemap segment to filter the detail table below. Click again to deselect.")
-    col_bar, col_tree = st.columns(2)
-
-    with col_bar:
-        st.subheader("CO\u2082e per Material")
-        fig_co2_bar = create_co2_bar(element_df)
-        ev_co2 = st.plotly_chart(fig_co2_bar, on_select="rerun", key="cf_p5_co2_bar", use_container_width=True)
-        if ev_co2 and ev_co2.selection.points:
-            pt = ev_co2.selection.points[0]
-            clicked = pt.get("y") or pt.get("x") or pt.get("label")
-            if clicked:
-                st.session_state.cf_page5_material = None if clicked == st.session_state.get("cf_page5_material") else clicked
-                st.session_state.cf_page5_treemap = None
-                st.rerun()
-
-    with col_tree:
-        st.subheader("CO\u2082e Share by Material")
-        fig_treemap = create_co2_treemap(element_df)
-        ev_tree = st.plotly_chart(fig_treemap, on_select="rerun", key="cf_p5_treemap", use_container_width=True)
-        if ev_tree and ev_tree.selection.points:
-            pt = ev_tree.selection.points[0]
-            clicked = pt.get("label") or pt.get("id") or pt.get("x")
-            if clicked and clicked not in ("Gesamt", "root", "Total"):
-                st.session_state.cf_page5_treemap = clicked
-                st.session_state.cf_page5_material = clicked
-                st.rerun()
-
-with tab_cost:
-    kpi_c = st.columns(3)
-    with kpi_c[0]:
-        kpi_card("Total Costs", f"CHF {summary['cost_total']:,.0f}" if summary["cost_total"] else "\u2013")
-    with kpi_c[1]:
-        kpi_card("Cost per m\u00b2", f"CHF {summary['cost_per_m2']:,.0f}/m\u00b2" if summary.get("cost_per_m2") else "\u2013")
-    if mode == "umbau" and "status" in element_df.columns:
-        cost_neubau = pd.to_numeric(
-            element_df[element_df["status"] == "Neubau"].get("cost_chf", pd.Series(dtype=float)), errors="coerce"
-        ).sum()
-        with kpi_c[2]: kpi_card("New Build Costs", f"CHF {cost_neubau:,.0f}")
-    st.divider()
-    st.plotly_chart(create_cost_bar(element_df), use_container_width=True)
-
-with tab_zirk:
-    if mode != "umbau":
-        st.info("This view is only available in Renovation mode.")
-    else:
-        st.plotly_chart(create_slope_co2(element_df), use_container_width=True)
-        st.divider()
-        if "status" in element_df.columns:
-            total = len(element_df)
-            bestand = (element_df["status"] == "Bestand").sum()
-            abbruch = (element_df["status"] == "Abbruch").sum()
-            reuse_pct = (bestand / total * 100) if total > 0 else 0
-            deconstruct_pct = (abbruch / total * 100) if total > 0 else 0
-            cost_bestand = pd.to_numeric(
-                element_df[element_df["status"] == "Bestand"].get("cost_chf", pd.Series(dtype=float)), errors="coerce"
-            ).sum()
-            zk = st.columns(3)
-            with zk[0]: kpi_card("Reuse Potential", f"{reuse_pct:.1f}%")
-            with zk[1]: kpi_card("Deconstructable Elements", f"{deconstruct_pct:.1f}%")
-            with zk[2]: kpi_card("Estimated Residual Value", f"CHF {cost_bestand:,.0f}")
-            st.caption("Simplified estimate based on material types and status data.")
-        else:
-            st.warning("No status data available for circularity analysis.")
-
-# -- Detail Table --------------------------------------------------------------
 st.divider()
-st.subheader("Element Details")
 
-table_df = _apply_cf(element_df.copy())
-display_cols = ["element_id", "ifc_class", "material", "volume_m3", "co2e_total", "grey_energy_kwh", "cost_chf"]
-if mode == "umbau" and "status" in table_df.columns:
-    display_cols.append("status")
-display_cols = [c for c in display_cols if c in table_df.columns]
-col_rename = {
-    "element_id": "ID", "ifc_class": "IFC Class", "material": "Material",
-    "volume_m3": "Volume (m\u00b3)", "co2e_total": "CO2e (kg)",
-    "grey_energy_kwh": "Embodied Energy (kWh)", "cost_chf": "Cost (CHF)",
-    "status": "Status",
-}
-display_df = table_df[display_cols].rename(columns=col_rename)
-for num_col in ["Volume (m\u00b3)", "CO2e (kg)", "Embodied Energy (kWh)", "Cost (CHF)"]:
-    if num_col in display_df.columns:
-        display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(1)
-display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
-_cap = unit_caption(_u_area, _u_volume, _u_mass)
-st.caption(f"{len(display_df):,} elements shown | Missing factors shown as empty" + (f" | {_cap}" if _cap else ""))
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+# ── Chart A: CO₂-Intensität Bar (Hauptchart, interaktiv) ──────────────────────
+# Analytische Frage: "Welche Materialien haben den höchsten CO₂-Ausstoss pro m³?"
+# → Horizontal Bar: Rangliste, Labels lesbar, Farbe codiert Intensität (preattentive)
+# SIA 380/1 Referenzlinie gibt sofort Kontext ohne zusätzliche Komplexität
+st.subheader("CO₂-Intensität nach Material")
+st.caption(
+    "kg CO₂e pro m³ verbautes Volumen — zeigt welches Material klimaschädlicher ist, "
+    "unabhängig von der verbauten Menge. Klick filtert die Tabelle."
+)
+
+cf_mat = st.session_state.get("cf_page5_material")
+
+if "co2e_total" in element_df.columns and "volume_m3" in element_df.columns:
+    fig_co2 = create_co2_bar(element_df)
+    ev_co2  = st.plotly_chart(fig_co2, on_select="rerun", key="cf_p5_co2_bar", use_container_width=True)
+    if ev_co2 and ev_co2.selection.points:
+        pt      = ev_co2.selection.points[0]
+        clicked = pt.get("y") or pt.get("label")
+        st.session_state.cf_page5_material = (
+            None if clicked == st.session_state.get("cf_page5_material") else clicked
+        )
+        st.rerun()
+else:
+    st.info("Keine CO₂-Daten verfügbar — KBOB-Faktoren prüfen.")
+
+# ── CO₂-Anteil Treemap als Drilldown (Details on demand) ──────────────────────
+# Analytische Frage: "Wie verteilt sich der absolute CO₂-Ausstoss auf Materialgruppen?"
+# → Treemap als sekundäres Detail-Chart, nicht gleichrangig mit dem Hauptchart
+if "co2e_total" in element_df.columns:
+    with st.expander("▶ CO₂e-Anteile als Treemap (Drilldown)", expanded=False):
+        st.caption("Flächengrösse = absoluter CO₂e-Anteil. Material → IFC-Klasse.")
+        fig_tree = create_co2_treemap(element_df)
+        st.plotly_chart(fig_tree, use_container_width=True)
+
+st.divider()
+
+# ── Detailtabelle mit Conditional Formatting (Details on demand) ───────────────
+st.subheader("Elementdetails")
+st.caption("Farbkodierung: Rot = hoher CO₂e-Wert. Tabellen sind explizit Visualisierungen (Modul-Grundsatz).")
+
+table_df = element_df.copy()
+if cf_mat and "material" in table_df.columns:
+    table_df = table_df[table_df["material"] == cf_mat]
+
+display_cols = [c for c in ["element_id", "ifc_class", "storey", "material", "volume_m3", "co2e_total", "cost_chf"] if c in table_df.columns]
+if display_cols:
+    rename_map = {
+        "element_id": "Element ID", "ifc_class": "IFC-Klasse",
+        "storey": "Geschoss", "material": "Material",
+        "volume_m3": "Volumen (m³)", "co2e_total": "CO₂e (kg)", "cost_chf": "Kosten (CHF)",
+    }
+    disp = table_df[display_cols].rename(columns=rename_map)
+
+    def _co2_color(val):
+        try:
+            v = float(val)
+            if v > 5000:   return "background-color: #FDECEA; color: #C0392B"
+            elif v > 1000: return "background-color: #FEF9E7; color: #D4A017"
+            return ""
+        except Exception:
+            return ""
+
+    if "CO₂e (kg)" in disp.columns:
+        st.dataframe(
+            disp.style.map(_co2_color, subset=["CO₂e (kg)"]),
+            use_container_width=True, hide_index=True
+        )
+    else:
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+else:
+    st.info("Keine Detaildaten verfügbar.")
+
+st.divider()
+
+# ── Zusatz-Charts (für vertiefende Analyse) ────────────────────────────────────
+with st.expander("▶ Weitere Analysen: Kosten, Waterfall, Sankey", expanded=False):
+    tab_cost, tab_wf, tab_sankey = st.tabs(["Kosten", "Waterfall", "Sankey"])
+
+    with tab_cost:
+        st.caption("Kostentreiber nach Material.")
+        if "cost_chf" in element_df.columns:
+            st.plotly_chart(create_cost_bar(element_df), use_container_width=True)
+        else:
+            st.info("Keine Kostendaten.")
+
+    with tab_wf:
+        st.caption("CO₂e-Beitrag als Waterfall — zeigt kumulativen Aufbau.")
+        st.plotly_chart(create_waterfall_co2(element_df), use_container_width=True)
+
+    with tab_sankey:
+        st.caption("Materialflüsse: Material → IFC-Klasse → CO₂-Intensitätsklasse.")
+        st.plotly_chart(create_sankey_material(element_df), use_container_width=True)
+
+if mode == "umbau":
+    with st.expander("▶ Umbau-Analyse: Bestand vs. Neubau", expanded=False):
+        st.plotly_chart(create_slope_co2(element_df), use_container_width=True)

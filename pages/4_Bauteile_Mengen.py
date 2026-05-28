@@ -7,7 +7,6 @@ from src.chart_factory import (
     create_class_storey_stacked,
     create_material_quantity_bar,
 )
-from src.ui_helpers import apply_unit_conversion, unit_caption
 
 init_session_state()
 
@@ -18,8 +17,8 @@ except FileNotFoundError:
     pass
 
 element_df_raw = get_element_df(filtered=False)
-space_df_raw = get_space_df(filtered=False)
-mode = st.session_state.get("mode_project", "")
+space_df_raw   = get_space_df(filtered=False)
+mode           = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
@@ -28,127 +27,139 @@ if not st.session_state.get("ifc_parsed"):
 
 element_df = get_element_df(filtered=True)
 
-if element_df is None or element_df.empty:
-    st.title("Components & Quantities")
-    st.warning("No element data available.")
-    st.stop()
-
-st.title("Components & Quantities")
-
-_u_area   = st.session_state.get("unit_area",   "m\u00b2")
-_u_volume = st.session_state.get("unit_volume", "m\u00b3")
-_u_mass   = st.session_state.get("unit_mass",   "kg")
+st.title("Bauteile & Mengen")
+st.caption("Analyse der IFC-Elementtypen und verbauten Materialmengen.")
 
 CF_KEYS = ["cf_page4_class", "cf_page4_material"]
 render_cross_filter_reset("page4", CF_KEYS)
 
+if element_df is None or element_df.empty:
+    st.warning("Keine Elementdaten verfügbar.")
+    st.stop()
+
+# ── KPI-Karten ────────────────────────────────────────────────────────────────
+st.subheader("Kennzahlen")
+total_el   = len(element_df)
+n_classes  = element_df["ifc_class"].nunique() if "ifc_class" in element_df.columns else 0
+n_mats     = element_df["material"].nunique()  if "material"  in element_df.columns else 0
+total_vol  = pd.to_numeric(element_df.get("volume_m3", pd.Series(dtype=float)), errors="coerce").sum()
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Elemente",       f"{total_el:,}")
+c2.metric("IFC-Klassen",    f"{n_classes}")
+c3.metric("Materialien",    f"{n_mats}")
+c4.metric("Volumen total",  f"{total_vol:,.1f} m³" if total_vol > 0 else "–")
+
+st.divider()
+
+# ── Chart A: Horizontal Bar — Wie viele Elemente gibt es pro Typ? ─────────────
+# Analytische Frage: "Welche IFC-Klassen dominieren das Gebäude?"
+# → Horizontal Bar: Rangliste, Labels lesbar, Position = preattentive attribute
+st.subheader("Elemente nach IFC-Klasse")
+st.caption("Klick auf eine Klasse filtert Stacked Bar und Tabelle. Klick nochmal zum Deselektieren.")
+
 cf_class = st.session_state.get("cf_page4_class")
-cf_mat   = st.session_state.get("cf_page4_material")
-if cf_class or cf_mat:
-    parts = []
-    if cf_class: parts.append(f"Class: **{cf_class}**")
-    if cf_mat:   parts.append(f"Material: **{cf_mat}**")
-    st.info("Active filter -- " + " | ".join(parts) + "  (click same bar again to deselect, or use reset above)")
 
-def _apply_cf(df):
-    cf_c = st.session_state.get("cf_page4_class")
-    cf_m = st.session_state.get("cf_page4_material")
-    if cf_c and "ifc_class" in df.columns:
-        df = df[df["ifc_class"] == cf_c]
-    if cf_m and "material" in df.columns:
-        df = df[df["material"] == cf_m]
-    return df
+if "ifc_class" in element_df.columns:
+    chart_df = element_df.copy()
+    counts   = chart_df["ifc_class"].value_counts().reset_index()
+    counts.columns = ["ifc_class", "count"]
+    counts = counts.sort_values("count", ascending=True)
 
-# -- KPI Cards -----------------------------------------------------------------
-vol_sum = pd.to_numeric(element_df.get("volume_m3", pd.Series(dtype=float)), errors="coerce").sum(skipna=True)
-kpi = st.columns(4)
-kpi[0].metric("IFC Classes", f"{element_df['ifc_class'].nunique()}")
-kpi[1].metric("Total Elements", f"{len(element_df):,}")
-kpi[2].metric("Total Volume", f"{vol_sum:,.1f} m\u00b3")
-kpi[3].metric("Materials", f"{element_df['material'].nunique()}" if "material" in element_df.columns else "\u2013")
+    from src.constants import COLORS, CATEGORICAL_COLORS
+    import plotly.graph_objects as go
+    from src.chart_factory import apply_default_layout
 
-st.divider()
+    bar_colors = [
+        COLORS["primary"] if (cf_class is None or row["ifc_class"] == cf_class)
+        else COLORS["neutral"]
+        for _, row in counts.iterrows()
+    ]
 
-# -- Chart A: IFC Class Bar (horizontal, cross-filterable) ---------------------
-# -- Chart B: Stacked Bar (IFC-Class x Storey) ---------------------------------
-# Clicking Chart A filters Chart B and the table below.
+    fig_class = go.Figure(go.Bar(
+        x=counts["count"],
+        y=counts["ifc_class"],
+        orientation="h",
+        marker_color=bar_colors,
+        text=counts["count"],
+        textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Anzahl Elemente: %{x}<extra></extra>",
+    ))
+    apply_default_layout(fig_class, "Anzahl Elemente pro IFC-Klasse")
+    fig_class.update_layout(xaxis_title="Anzahl Elemente", yaxis_title="IFC-Klasse")
 
-st.caption("Click a bar to filter all charts and the table below. Click the same bar again to deselect.")
-col_left, col_right = st.columns(2)
-
-storey_df = st.session_state.get("storey_df")
-storey_order = None
-if isinstance(storey_df, list) and storey_df:
-    storey_order = [s["name"] for s in storey_df]
-elif isinstance(storey_df, pd.DataFrame) and not storey_df.empty:
-    storey_order = storey_df["name"].tolist() if "name" in storey_df.columns else None
-
-with col_left:
-    st.subheader("Elements by IFC Class")
-    fig_class_bar = create_class_bar_horizontal(element_df)
-    ev_class = st.plotly_chart(fig_class_bar, on_select="rerun", key="cf_p4_class_bar", use_container_width=True)
+    ev_class = st.plotly_chart(fig_class, on_select="rerun", key="cf_p4_class_bar", use_container_width=True)
     if ev_class and ev_class.selection.points:
-        pt = ev_class.selection.points[0]
-        clicked = pt.get("y") or pt.get("x") or pt.get("label")
-        if clicked:
-            st.session_state.cf_page4_class = None if clicked == st.session_state.get("cf_page4_class") else clicked
-            st.rerun()
-
-with col_right:
-    st.subheader("IFC Classes per Storey")
-    fig_storey_stack = create_class_storey_stacked(element_df, storey_order)
-    ev_storey = st.plotly_chart(fig_storey_stack, on_select="rerun", key="cf_p4_storey_stack", use_container_width=True)
-    if ev_storey and ev_storey.selection.points:
-        pt = ev_storey.selection.points[0]
-        clicked_val = pt.get("y") or pt.get("x") or pt.get("label")
-        if clicked_val:
-            st.session_state.cf_page4_class = None if clicked_val == st.session_state.get("cf_page4_class") else clicked_val
-            st.rerun()
-
-st.divider()
-
-# -- Chart C: Material Quantities Bar (cross-filterable) -----------------------
-st.subheader("Materials by Volume")
-st.caption("Click a bar to filter the table below by material.")
-unit = st.session_state.get("unit_volume", "m\u00b3")
-fig_mat = create_material_quantity_bar(element_df, unit)
-ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="cf_p4_mat_bar", use_container_width=True)
-if ev_mat and ev_mat.selection.points:
-    pt = ev_mat.selection.points[0]
-    clicked_mat = pt.get("y") or pt.get("x") or pt.get("label")
-    if clicked_mat:
-        st.session_state.cf_page4_material = None if clicked_mat == st.session_state.get("cf_page4_material") else clicked_mat
+        pt      = ev_class.selection.points[0]
+        clicked = pt.get("y") or pt.get("label")
+        st.session_state.cf_page4_class = (
+            None if clicked == st.session_state.get("cf_page4_class") else clicked
+        )
         st.rerun()
+else:
+    st.info("Keine IFC-Klassendaten verfügbar.")
 
-# -- Quantity Takeoff Table ----------------------------------------------------
 st.divider()
-st.subheader("Quantity Takeoff")
 
-table_df = _apply_cf(element_df.copy())
-search = st.text_input("Search (type or material)", key="search_elements", placeholder="e.g. Concrete, Wall...")
-if search:
-    mask = pd.Series([False] * len(table_df))
-    for col_search in ["type_name", "material", "ifc_class"]:
-        if col_search in table_df.columns:
-            mask |= table_df[col_search].astype(str).str.contains(search, case=False, na=False)
-    table_df = table_df[mask]
+# ── Chart B: Stacked Bar — Wie verteilen sich Klassen auf Geschosse? ──────────
+# Analytische Frage: "Wie viele Elemente welchen Typs gibt es pro Geschoss?"
+# → Stacked Bar: Teil-Ganzes über Kategorien
+st.subheader("Elemente nach Geschoss und IFC-Klasse")
 
-display_cols = ["element_id", "ifc_class", "type_name", "material", "storey", "area_m2", "volume_m3", "length_m"]
-if mode == "umbau" and "status" in table_df.columns:
-    display_cols.append("status")
-display_cols = [c for c in display_cols if c in table_df.columns]
-col_rename = {
-    "element_id": "ID", "ifc_class": "IFC Class", "type_name": "Type",
-    "material": "Material", "storey": "Storey",
-    "area_m2": "Area (m\u00b2)", "volume_m3": "Volume (m\u00b3)", "length_m": "Length (m)",
-    "status": "Status",
-}
-display_df = table_df[display_cols].rename(columns=col_rename)
-for num_col in ["Area (m\u00b2)", "Volume (m\u00b3)", "Length (m)"]:
-    if num_col in display_df.columns:
-        display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(2)
+filter_df = element_df.copy()
+if cf_class and "ifc_class" in filter_df.columns:
+    filter_df = filter_df[filter_df["ifc_class"] == cf_class]
 
-display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
-_cap = unit_caption(_u_area, _u_volume, _u_mass)
-st.caption(f"{len(display_df):,} elements shown" + (f" | {_cap}" if _cap else ""))
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+if not filter_df.empty:
+    fig_stacked = create_class_storey_stacked(filter_df)
+    st.plotly_chart(fig_stacked, use_container_width=True)
+else:
+    st.info("Keine Daten für die aktuelle Auswahl.")
+
+st.divider()
+
+# ── Chart C: Material Bar — Welche Materialien sind am meisten verbaut? ───────
+# Analytische Frage: "Welche Materialien dominieren nach Volumen?"
+# → Horizontal Bar: Rangliste sortiert nach Grösse
+st.subheader("Verbautes Volumen nach Material")
+st.caption("Klick auf ein Material filtert die Detailtabelle unten.")
+
+cf_mat = st.session_state.get("cf_page4_material")
+
+if "material" in element_df.columns and "volume_m3" in element_df.columns:
+    fig_mat = create_material_quantity_bar(element_df)
+    ev_mat  = st.plotly_chart(fig_mat, on_select="rerun", key="cf_p4_mat_bar", use_container_width=True)
+    if ev_mat and ev_mat.selection.points:
+        pt      = ev_mat.selection.points[0]
+        clicked = pt.get("y") or pt.get("label")
+        st.session_state.cf_page4_material = (
+            None if clicked == st.session_state.get("cf_page4_material") else clicked
+        )
+        st.rerun()
+else:
+    st.info("Keine Materialdaten verfügbar.")
+
+st.divider()
+
+# ── Detailtabelle (Details on demand) ─────────────────────────────────────────
+st.subheader("Elementdetails")
+
+table_df = element_df.copy()
+if cf_class and "ifc_class" in table_df.columns:
+    table_df = table_df[table_df["ifc_class"] == cf_class]
+if cf_mat and "material" in table_df.columns:
+    table_df = table_df[table_df["material"] == cf_mat]
+
+display_cols = [c for c in ["element_id", "ifc_class", "storey", "material", "volume_m3", "area_m2"] if c in table_df.columns]
+if display_cols:
+    rename_map = {
+        "element_id": "Element ID", "ifc_class": "IFC-Klasse",
+        "storey": "Geschoss", "material": "Material",
+        "volume_m3": "Volumen (m³)", "area_m2": "Fläche (m²)",
+    }
+    st.dataframe(
+        table_df[display_cols].rename(columns=rename_map),
+        use_container_width=True, hide_index=True
+    )
+else:
+    st.info("Keine Tabellendaten verfügbar.")

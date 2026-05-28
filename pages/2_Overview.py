@@ -1,15 +1,8 @@
 import streamlit as st
-from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
-from src.filters import render_sidebar
-from src.chart_factory import (
-    create_room_sunburst,
-    create_co2_treemap,
-    create_material_quantity_bar,
-    create_class_bar_horizontal,
-)
-from src.impact_calculator import get_impact_summary
-from src.ui_helpers import kpi_card
-from src.constants import SIA_2032_LIMIT, COLORS
+import pandas as pd
+from src.state_manager import init_session_state, get_element_df, get_space_df
+from src.filters import render_sidebar, render_cross_filter_reset
+from src.chart_factory import create_room_stacked_bar, create_co2_treemap
 
 init_session_state()
 
@@ -20,8 +13,8 @@ except FileNotFoundError:
     pass
 
 element_df_raw = get_element_df(filtered=False)
-space_df_raw = get_space_df(filtered=False)
-mode = st.session_state.get("mode_project", "")
+space_df_raw   = get_space_df(filtered=False)
+mode           = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
@@ -29,92 +22,87 @@ if not st.session_state.get("ifc_parsed"):
     st.stop()
 
 element_df = get_element_df(filtered=True)
-space_df = get_space_df(filtered=True)
-has_spaces = space_df is not None and not space_df.empty
+space_df   = get_space_df(filtered=True)
 
-# -- Mode Badge ----------------------------------------------------------------
-if mode == "neubau":
-    mode_label, mode_bg, mode_border = "New Build", "#D5EEF0", COLORS["neubau"]
-else:
-    mode_label, mode_bg, mode_border = "Renovation", "#EDE3D5", COLORS["abbruch"]
-
-st.markdown(
-    f'<div style="display:inline-block;background:{mode_bg};border-left:4px solid {mode_border};'
-    f'border-radius:4px;padding:4px 14px;font-weight:600;margin-bottom:8px;font-size:14px;">'
-    f'{mode_label}</div>', unsafe_allow_html=True,
-)
 st.title("Overview")
+st.caption("Gesamtübersicht des Gebäudemodells — Overview first, dann Details.")
 
-# -- KPI Row -------------------------------------------------------------------
-_, quality_summary = get_quality_data()
-summary = get_impact_summary(element_df, space_df, mode)
-score = quality_summary.get("score", 0) if quality_summary else 0
-co2_per_m2 = summary.get("co2e_per_m2") if summary else None
+CF_KEYS = ["cf_page2_storey", "cf_page2_material"]
+render_cross_filter_reset("page2", CF_KEYS)
 
-kpi = st.columns(5)
-with kpi[0]: kpi_card("Elements", f"{len(element_df):,}" if element_df is not None else "\u2013")
-with kpi[1]: kpi_card("Rooms", f"{len(space_df):,}" if has_spaces else "n/a")
-with kpi[2]:
-    kpi_card("Storeys", f"{element_df['storey'].nunique():,}" if element_df is not None and "storey" in element_df.columns else "\u2013")
-with kpi[3]:
-    if co2_per_m2:
-        diff = co2_per_m2 - SIA_2032_LIMIT
-        d_color = COLORS["error_ok"] if diff <= 0 else COLORS["error_warning"]
-        d_text = f"{'below' if diff<=0 else 'above'} SIA 2032 limit"
-        kpi_card("CO\u2082e / m\u00b2 NFA", f"{co2_per_m2:.1f} kg/m\u00b2", d_text, d_color)
-    else:
-        kpi_card("CO\u2082e / m\u00b2 NFA", "\u2013", f"Limit: {SIA_2032_LIMIT:.0f} kg/m\u00b2", COLORS["text_light"])
-with kpi[4]:
-    q_color = COLORS["error_ok"] if score >= 80 else COLORS["error_warning"] if score >= 50 else COLORS["error_critical"]
-    kpi_card("Model Quality", f"{score:.0f}%", delta_color=q_color)
+# ── 1. KPI-Karten (Overview first — Shneiderman's Mantra) ─────────────────────
+st.subheader("Kennzahlen")
+
+total_elements = len(element_df) if element_df is not None and not element_df.empty else 0
+total_spaces   = len(space_df)   if space_df   is not None and not space_df.empty   else 0
+
+n_doors   = 0
+n_windows = 0
+n_open    = 0
+if element_df is not None and not element_df.empty and "ifc_class" in element_df.columns:
+    n_doors   = int((element_df["ifc_class"].str.contains("Door",   case=False, na=False)).sum())
+    n_windows = int((element_df["ifc_class"].str.contains("Window", case=False, na=False)).sum())
+    n_open    = n_doors + n_windows
+
+total_co2 = 0.0
+if element_df is not None and not element_df.empty and "co2e_total" in element_df.columns:
+    total_co2 = pd.to_numeric(element_df["co2e_total"], errors="coerce").sum()
+
+col1, col2, col3, col4, col5 = st.columns(5)
+col1.metric("Elemente total",   f"{total_elements:,}")
+col2.metric("Räume / Zonen",    f"{total_spaces:,}")
+col3.metric("Türen",            f"{n_doors:,}")
+col4.metric("Fenster",          f"{n_windows:,}")
+col5.metric("Total Öffnungen",  f"{n_open:,}")
+
+if total_co2 > 0:
+    st.metric("Graue Energie (CO₂e total)", f"{total_co2:,.0f} kg")
 
 st.divider()
 
-# -- Chart A: Sunburst (Stockwerk -> Raumtyp) ----------------------------------
-# Chart B: CO2 Treemap (Materialien nach CO2-Anteil)
-# Both are interactive: clicking sunburst filters session state for storey.
-# Treemap clicking filters the material cross-filter used in other pages.
+# ── 2. Zoom & Filter: Stacked Bar (Räume nach Geschoss × Nutzung) ─────────────
+# Analytische Frage: "Wie verteilt sich die Raumfläche über Geschosse und Nutzungstypen?"
+# → Stacked Bar: Teil-Ganzes über Kategorien, Längen direkt vergleichbar
 
-col_left, col_right = st.columns(2)
+st.subheader("Raumfläche nach Geschoss und Nutzung")
+st.caption("Klick auf ein Geschoss filtert die gesamte Seite. Klick nochmal zum Deselektieren.")
 
-with col_left:
-    st.subheader("Room Structure by Storey")
-    st.caption("Click a storey segment to highlight it. Click again to deselect.")
-    if has_spaces:
-        fig_sun = create_room_sunburst(space_df)
-        ev_sun = st.plotly_chart(fig_sun, on_select="rerun", key="ov_sunburst", use_container_width=True)
-        if ev_sun and ev_sun.selection.points:
-            pt = ev_sun.selection.points[0]
-            clicked_label = pt.get("label") or pt.get("id") or ""
-            known_storeys = space_df["storey"].dropna().unique().tolist() if "storey" in space_df.columns else []
-            if clicked_label in known_storeys:
-                prev = st.session_state.get("overview_storey")
-                st.session_state.overview_storey = None if clicked_label == prev else clicked_label
-                st.rerun()
-        if st.session_state.get("overview_storey"):
-            if st.button("Reset storey filter", key="ov_reset"):
-                st.session_state.overview_storey = None
-                st.rerun()
-    else:
-        st.subheader("Elements by IFC Class")
-        if element_df is not None and not element_df.empty:
-            st.plotly_chart(create_class_bar_horizontal(element_df), use_container_width=True, key="ov_cls_bar")
-        else:
-            st.info("No element data available.")
+if space_df is not None and not space_df.empty:
+    storey_order = (
+        space_df["storey"].value_counts().index.tolist()
+        if "storey" in space_df.columns else None
+    )
+    fig_bar = create_room_stacked_bar(space_df, storey_order=storey_order)
+    ev_bar  = st.plotly_chart(fig_bar, on_select="rerun", key="cf_p2_storey_bar", use_container_width=True)
 
-with col_right:
-    st.subheader("CO\u2082 Impact by Material")
-    st.caption("Click a segment to filter the Impact & Costs page. Click again to deselect.")
-    if element_df is not None and not element_df.empty:
-        fig_tree = create_co2_treemap(element_df)
-        ev_tree = st.plotly_chart(fig_tree, on_select="rerun", key="ov_co2tree", use_container_width=True)
-        if ev_tree and ev_tree.selection.points:
-            pt = ev_tree.selection.points[0]
-            clicked = pt.get("label") or pt.get("id") or pt.get("x")
-            if clicked and clicked not in ("Gesamt", "root", "Total"):
-                prev = st.session_state.get("cf_page5_treemap")
-                st.session_state.cf_page5_treemap = None if clicked == prev else clicked
-                st.session_state.cf_page5_material = st.session_state.cf_page5_treemap
-                st.rerun()
-    else:
-        st.info("No CO\u2082 data available.")
+    if ev_bar and ev_bar.selection.points:
+        pt      = ev_bar.selection.points[0]
+        clicked = pt.get("x") or pt.get("label")
+        st.session_state.cf_page2_storey = (
+            None if clicked == st.session_state.get("cf_page2_storey") else clicked
+        )
+        st.rerun()
+else:
+    st.info("Keine Raumdaten verfügbar.")
+
+st.divider()
+
+# ── 3. CO₂-Überblick: Treemap als sekundäres Detail-Chart ─────────────────────
+# Analytische Frage: "Wie verteilt sich der CO₂-Ausstoss auf Materialgruppen?"
+# → Treemap: Anteil + Grösse gleichzeitig, für technisch affine Nutzer
+if element_df is not None and not element_df.empty and "co2e_total" in element_df.columns:
+    st.subheader("CO₂e-Verteilung nach Material")
+    st.caption("Flächengrösse = CO₂e-Anteil. Klick auf Material filtert Material-Filter auf Page 5.")
+
+    fig_co2 = create_co2_treemap(element_df)
+    ev_co2  = st.plotly_chart(fig_co2, on_select="rerun", key="cf_p2_co2_treemap", use_container_width=True)
+
+    if ev_co2 and ev_co2.selection.points:
+        pt      = ev_co2.selection.points[0]
+        clicked = pt.get("label") or pt.get("id", "")
+        if "__" in str(clicked):
+            clicked = clicked.split("__")[0]
+        st.session_state.cf_page2_material = (
+            None if clicked == st.session_state.get("cf_page2_material") else clicked
+        )
+        st.rerun()

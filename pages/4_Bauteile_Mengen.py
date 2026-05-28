@@ -41,16 +41,26 @@ _u_volume = st.session_state.get("unit_volume", "m\u00b3")
 _u_mass   = st.session_state.get("unit_mass",   "kg")
 
 # Cross filter resets
-CF_KEYS = ["cf_page4_class", "cf_page4_material"]
+# Support cross-filtering by Room Usage (from Page 2 Treemap), Material and Class
+CF_KEYS = ["cf_page4_class", "cf_page4_material", "cf_page3_usage"]
 render_cross_filter_reset("page4", CF_KEYS)
 
+cf_usage = st.session_state.get("cf_page3_usage")
 cf_class = st.session_state.get("cf_page4_class")
 cf_mat   = st.session_state.get("cf_page4_material")
-if cf_class or cf_mat:
-    parts = []
-    if cf_class: parts.append(f"Klasse: **{cf_class}**")
-    if cf_mat:   parts.append(f"Material: **{cf_mat}**")
-    st.info("Aktiver Filter -- " + " | ".join(parts) + "  (Nutzen Sie den Button oben zum Zurücksetzen)")
+
+if cf_usage:
+    st.info(f"Aktivierter Filter (von Übersicht): Elemente gefiltert nach Räumen vom Typ **{cf_usage}**")
+    if space_df_raw is not None and not space_df_raw.empty:
+        valid_storeys = space_df_raw[space_df_raw["usage"] == cf_usage]["storey"].unique()
+        if len(valid_storeys) > 0:
+            element_df = element_df[element_df["storey"].isin(valid_storeys)]
+        else:
+            element_df = pd.DataFrame()
+
+if element_df is None or element_df.empty:
+    st.warning("Keine Elementdaten unter den aktiven Filtern verfügbar.")
+    st.stop()
 
 def _apply_cf(df):
     cf_c = st.session_state.get("cf_page4_class")
@@ -77,10 +87,18 @@ col_left, col_right = st.columns(2)
 
 with col_left:
     st.subheader("Mengen nach Materialgruppe")
-    st.caption("Einheitliche Akzentfarbe #2E86AB (Stahlblau). Absteigend nach Volumen sortiert.")
+    st.caption("Einheitliche Akzentfarbe #2E86AB (Stahlblau). Absteigend nach Volumen sortiert. Klicken Sie auf einen Balken zum Filtern.")
     unit = st.session_state.get("unit_volume", "m³")
     fig_mat = create_material_volume_bar(element_df, unit)
-    st.plotly_chart(fig_mat, use_container_width=True, key="p4_volume_bar")
+    
+    ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True)
+    if ev_mat and ev_mat.selection.points:
+        pt = ev_mat.selection.points[0]
+        clicked = pt.get("y") or pt.get("label") or ""
+        if clicked:
+            prev = st.session_state.get("cf_page4_material")
+            st.session_state.cf_page4_material = None if clicked == prev else clicked
+            st.rerun()
 
 with col_right:
     st.subheader("Materialanteil pro Bauteilgruppe")

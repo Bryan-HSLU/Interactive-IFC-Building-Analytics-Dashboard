@@ -4,11 +4,6 @@ from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
     create_material_co2_bar,
-    create_co2_treemap,
-    create_cost_bar,
-    create_waterfall_co2,
-    create_sankey_material,
-    create_slope_co2,
 )
 from src.ui_helpers import apply_unit_conversion, unit_caption
 from src.constants import COLORS
@@ -37,11 +32,24 @@ element_df = get_element_df(filtered=True)
 st.title("Impact & Kosten")
 st.caption("CO₂-Fussabdruck der Baustoffe, Auswertung der Kosten und Ökobilanzierung.")
 
-CF_KEYS = ["cf_page5_material"]
+# Support cross-filtering by Room Usage (from Page 2 Treemap) and Page 5 Material
+CF_KEYS = ["cf_page5_material", "cf_page3_usage"]
 render_cross_filter_reset("page5", CF_KEYS)
 
+cf_usage = st.session_state.get("cf_page3_usage")
+cf_mat = st.session_state.get("cf_page5_material")
+
+if cf_usage:
+    st.info(f"Aktivierter Filter (von Übersicht): Elemente gefiltert nach Räumen vom Typ **{cf_usage}**")
+    if space_df_raw is not None and not space_df_raw.empty:
+        valid_storeys = space_df_raw[space_df_raw["usage"] == cf_usage]["storey"].unique()
+        if len(valid_storeys) > 0:
+            element_df = element_df[element_df["storey"].isin(valid_storeys)]
+        else:
+            element_df = pd.DataFrame()
+
 if element_df is None or element_df.empty:
-    st.warning("Keine Elementdaten verfügbar.")
+    st.warning("Keine Elementdaten unter den aktiven Filtern verfügbar.")
     st.stop()
 
 # ── KBOB Coverage & Unmatched Materials list ─────────────────────────────────
@@ -71,38 +79,19 @@ st.divider()
 # ── 4️⃣ Material CO2 Chart: "Welches Material verursacht am meisten CO2?" ─────
 
 st.subheader("Ökobilanz nach Materialgruppe")
-st.caption("Farbkodierung: Grün (Niedrige Last) ➔ Gelb (Mittlere Last) ➔ Rot (Hohe Last). Die gestrichelte Linie markiert den Durchschnitt.")
+st.caption("Farbkodierung: Grün (Niedrige Last) ➔ Gelb (Mittlere Last) ➔ Rot (Hohe Last). Die gestrichelte Linie markiert den Durchschnitt. Klicken Sie auf einen Balken zum Filtern.")
 
-cf_mat = st.session_state.get("cf_page5_material")
 df_co2 = element_df.copy()
-if cf_mat:
-    df_co2 = df_co2[df_co2["material"] == cf_mat]
-
 fig_co2 = create_material_co2_bar(df_co2)
-st.plotly_chart(fig_co2, use_container_width=True, key="p5_co2_bar")
 
-# ── Advanced Expanders ────────────────────────────────────────────────────────
-
-with st.expander("Weitere Nachhaltigkeits-Analysen (Kosten, Treemap, Wasserfall, Sankey)", expanded=False):
-    tab_cost, tab_tree, tab_water, tab_sankey = st.tabs(["Kosten", "Treemap", "Waterfall", "Sankey"])
-    with tab_cost:
-        if "cost_chf" in element_df.columns:
-            fig_cost = create_cost_bar(element_df)
-            st.plotly_chart(fig_cost, use_container_width=True)
-    with tab_tree:
-        fig_tree = create_co2_treemap(element_df)
-        st.plotly_chart(fig_tree, use_container_width=True)
-    with tab_water:
-        fig_water = create_waterfall_co2(element_df)
-        st.plotly_chart(fig_water, use_container_width=True)
-    with tab_sankey:
-        fig_sankey = create_sankey_material(element_df)
-        st.plotly_chart(fig_sankey, use_container_width=True)
-
-if mode == "umbau":
-    with st.expander("Zirkularitäts- & Umbau-Analyse", expanded=False):
-        fig_slope = create_slope_co2(element_df)
-        st.plotly_chart(fig_slope, use_container_width=True)
+ev_co2 = st.plotly_chart(fig_co2, on_select="rerun", key="p5_co2_bar_chart", use_container_width=True)
+if ev_co2 and ev_co2.selection.points:
+    pt = ev_co2.selection.points[0]
+    clicked = pt.get("y") or pt.get("label") or ""
+    if clicked:
+        prev = st.session_state.get("cf_page5_material")
+        st.session_state.cf_page5_material = None if clicked == prev else clicked
+        st.rerun()
 
 # ── Detail Table ──────────────────────────────────────────────────────────────
 st.divider()

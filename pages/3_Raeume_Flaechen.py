@@ -8,6 +8,7 @@ from src.chart_factory import (
     create_room_boxplot, create_room_stacked_bar, create_room_histogram,
     create_room_scatter,
 )
+from src.ui_helpers import kpi_card
 from src.constants import COLORS
 
 st.set_page_config(page_title="Räume & Flächen – IFC Analytics", page_icon=None, layout="wide")
@@ -38,22 +39,7 @@ if space_df is None or space_df.empty:
 st.title("Räume & Flächen")
 
 
-# ── Helper: KPI-Card ─────────────────────────────────────────────────────
-def _kpi_card(label: str, value: str, delta_text: str = "", delta_color: str = "") -> None:
-    delta_html = ""
-    if delta_text:
-        color = delta_color or COLORS["text_light"]
-        delta_html = f'<div style="font-size:0.78rem;color:{color};margin-top:2px;">{delta_text}</div>'
-    st.markdown(
-        f'<div style="background:rgba(0,0,0,0.03);border-radius:8px;padding:10px 14px;margin-bottom:6px;">'
-        f'<div style="font-size:0.8rem;color:{COLORS["text_light"]};">{label}</div>'
-        f'<div style="font-size:1.4rem;font-weight:600;color:{COLORS["text"]};">{value}</div>'
-        f'{delta_html}</div>',
-        unsafe_allow_html=True,
-    )
-
-
-# ── Helper: Raumname aus plotly_events-Scatter-Klick rekonstruieren ──────────────
+# ── Helper: Raumname aus plotly_events-Scatter-Klick rekonstruieren ──────────────────
 def _room_name_from_scatter_event(event: dict, df: pd.DataFrame) -> str | None:
     """
     plotly_events gibt bei Scatter-Klick {curveNumber, pointNumber, x, y} zurueck.
@@ -74,7 +60,6 @@ def _room_name_from_scatter_event(event: dict, df: pd.DataFrame) -> str | None:
     sub = df.dropna(subset=["area_m2", y_col]).copy()
     sub["usage"] = sub["usage"].fillna("Unbekannt") if "usage" in sub.columns else "Unbekannt"
 
-    # Exakt dieselbe Sortierung wie in create_room_scatter
     usages = sorted(sub["usage"].unique(), key=lambda x: (x == "Unbekannt", x))
 
     curve_number = event.get("curveNumber", 0)
@@ -93,30 +78,30 @@ def _room_name_from_scatter_event(event: dict, df: pd.DataFrame) -> str | None:
     return str(row["name"]) if "name" in trace_rows.columns else None
 
 
-# ── Cross-filter reset ───────────────────────────────────────────────────
+# ── Cross-filter reset ─────────────────────────────────────────────────────────
 CF_KEYS = ["cf_page3_usage", "cf_page3_storey", "cf_page3_size_bin", "cf_page3_room"]
 render_cross_filter_reset("page3", CF_KEYS)
 
-# ── Section A: KPI Cards ───────────────────────────────────────────────
+# ── Section A: KPI Cards ──────────────────────────────────────────────────────────
 df_with_area = space_df.dropna(subset=["area_m2"]) if "area_m2" in space_df.columns else pd.DataFrame()
 rooms_without_area = len(space_df) - len(df_with_area)
 
 kpi = st.columns(5)
 with kpi[0]:
-    _kpi_card("Räume gesamt", f"{len(space_df):,}")
+    kpi_card("Räume gesamt", f"{len(space_df):,}")
 with kpi[1]:
-    _kpi_card("Gesamtfläche (NGF)", f"{df_with_area['area_m2'].sum():,.1f} m²" if not df_with_area.empty else "–")
+    kpi_card("Gesamtfläche (NGF)", f"{df_with_area['area_m2'].sum():,.1f} m²" if not df_with_area.empty else "–")
 with kpi[2]:
-    _kpi_card("Ø Raumgrösse", f"{df_with_area['area_m2'].mean():,.1f} m²" if not df_with_area.empty else "–")
+    kpi_card("Ø Raumgrösse", f"{df_with_area['area_m2'].mean():,.1f} m²" if not df_with_area.empty else "–")
 with kpi[3]:
-    _kpi_card("Geschosse", f"{space_df['storey'].nunique():,}" if "storey" in space_df.columns else "–")
+    kpi_card("Geschosse", f"{space_df['storey'].nunique():,}" if "storey" in space_df.columns else "–")
 with kpi[4]:
-    _kpi_card("Nutzungstypen", f"{space_df['usage'].nunique():,}" if "usage" in space_df.columns else "–")
+    kpi_card("Nutzungstypen", f"{space_df['usage'].nunique():,}" if "usage" in space_df.columns else "–")
 
 if rooms_without_area > 0:
     st.caption(f"{rooms_without_area} Räume ohne Flächenangabe (nicht in Charts dargestellt)")
 
-# ── Section B: Distribution Analysis ──────────────────────────────────
+# ── Section B: Distribution Analysis ──────────────────────────────────────────
 col_left, col_right = st.columns(2)
 
 with col_left:
@@ -147,7 +132,7 @@ with col_right:
             st.session_state.cf_page3_room = None
             st.rerun()
 
-# ── Section C: Histogram ────────────────────────────────────────────────
+# ── Section C: Histogram ───────────────────────────────────────────────────────
 fig_hist = create_room_histogram(space_df)
 selected_hist = plotly_events(fig_hist, click_event=True, key="cf_p3_histogram", override_height=320)
 if selected_hist:
@@ -164,7 +149,7 @@ if selected_hist:
             st.session_state.cf_page3_room = None
             st.rerun()
 
-# ── Section D: Scatter – interaktiv mit Raum-Highlight ────────────────────
+# ── Section D: Scatter ────────────────────────────────────────────────────────────
 st.divider()
 st.subheader("Räumliche Analyse")
 
@@ -182,7 +167,6 @@ fig_scatter = create_room_scatter(space_df)
 sel_scatter = plotly_events(fig_scatter, click_event=True, key="cf_p3_scatter", override_height=420)
 
 if sel_scatter:
-    # FIX #1: curveNumber+pointNumber → Raumname via DataFrame-Lookup
     clicked_name = _room_name_from_scatter_event(sel_scatter[0], space_df)
 
     if clicked_name and clicked_name != cf_room:
@@ -193,11 +177,10 @@ if sel_scatter:
                 st.session_state.cf_page3_usage = matched.iloc[0]["usage"]
         st.rerun()
     elif clicked_name and clicked_name == cf_room:
-        # Zweiter Klick auf denselben Punkt → Filter aufheben
         st.session_state.cf_page3_room = None
         st.rerun()
 
-# ── Section E: Detail Table mit Highlight ────────────────────────────────
+# ── Section E: Detail Table ───────────────────────────────────────────────────────
 st.subheader("Raumdetails")
 
 table_df = space_df.copy()
@@ -217,7 +200,6 @@ if cf_size_bin and "area_m2" in table_df.columns:
         (table_df["area_m2"] <  bin_center + bin_width / 2)
     ]
 
-# Suchfilter
 search = st.text_input("Suche (Raumname)", key="search_rooms", placeholder="z.B. Büro, Flur…")
 if search:
     mask = table_df.get("name", pd.Series(dtype=str)).astype(str).str.contains(search, case=False, na=False)
@@ -225,14 +207,12 @@ if search:
         mask |= table_df["long_name"].astype(str).str.contains(search, case=False, na=False)
     table_df = table_df[mask]
 
-# Highlight-Spalte: geklickter Raum bekommt "🟡"
 table_df = table_df.copy()
 if cf_room and "name" in table_df.columns:
     table_df.insert(0, "", table_df["name"].astype(str).apply(
         lambda n: "🟡" if n == cf_room else ""
     ))
 
-# Angezeigte Spalten
 display_cols = ["name", "storey", "usage", "area_m2", "volume_m3", "height_m"]
 if mode == "umbau" and "status" in table_df.columns:
     display_cols.append("status")
@@ -250,14 +230,13 @@ for num_col in ["Fläche (m²)", "Volumen (m³)", "Höhe (m)"]:
     if num_col in display_df.columns:
         display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(2)
 
-# Geklickter Raum an erste Position
 if cf_room and "Raumname" in display_df.columns:
     is_selected = display_df["Raumname"].astype(str) == cf_room
     display_df = pd.concat([display_df[is_selected], display_df[~is_selected]], ignore_index=True)
 
 st.caption(
     f"{len(display_df)} Räume angezeigt"
-    + (f" — 🟡 = ausgewählter Raum" if cf_room else "")
+    + (f" — 🟡 = ausgewählter Raum" if cf_room else "")
 )
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 

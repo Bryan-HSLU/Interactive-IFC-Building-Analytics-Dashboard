@@ -9,6 +9,7 @@ from src.chart_factory import (
     create_waterfall_co2, create_sankey_material, create_slope_co2,
 )
 from src.impact_calculator import get_impact_summary
+from src.ui_helpers import kpi_card
 from src.constants import SIA_2032_LIMIT, COLORS
 
 st.set_page_config(page_title="Impact & Costs – IFC Analytics", page_icon=None, layout="wide")
@@ -53,7 +54,7 @@ if coverage == 0:
 elif coverage < 100:
     st.info(f"{coverage:.0f}% der Elemente konnten KBOB-Faktoren zugeordnet werden.")
 
-# Apply cross-filters to table df
+
 def _apply_cf(df):
     cf_mat = st.session_state.get("cf_page5_material")
     cf_tree = st.session_state.get("cf_page5_treemap")
@@ -63,29 +64,14 @@ def _apply_cf(df):
         df = df[df["material"] == cf_tree]
     return df
 
-# ── Helper: custom KPI card mit optionalem Delta ──────────────────────────
-def _kpi_card(label: str, value: str, delta_text: str = "", delta_color: str = "") -> None:
-    """Rendert eine KPI-Karte mit custom Markdown – kein st.metric delta_color."""
-    delta_html = ""
-    if delta_text:
-        color = delta_color or COLORS["text_light"]
-        delta_html = f'<div style="font-size:0.78rem;color:{color};margin-top:2px;">{delta_text}</div>'
-    st.markdown(
-        f'<div style="background:rgba(0,0,0,0.03);border-radius:8px;padding:10px 14px;margin-bottom:6px;">'
-        f'<div style="font-size:0.8rem;color:{COLORS["text_light"]};">{label}</div>'
-        f'<div style="font-size:1.4rem;font-weight:600;color:{COLORS["text"]};">{value}</div>'
-        f'{delta_html}</div>',
-        unsafe_allow_html=True,
-    )
 
-# ── Tabs ──────────────────────────────────────────────────────────────────
+# ── Tabs ────────────────────────────────────────────────────────────────────────
 tab_co2, tab_cost, tab_zirk = st.tabs(["CO2 & Energie", "Kosten", "Zirkularität"])
 
 with tab_co2:
-    # KPI cards – custom Markdown, kein st.metric delta
     kpi = st.columns(4)
     with kpi[0]:
-        _kpi_card(
+        kpi_card(
             "CO2e gesamt",
             f"{summary['co2e_total']:,.0f} kg" if summary["co2e_total"] else "–"
         )
@@ -94,44 +80,41 @@ with tab_co2:
         if co2_m2:
             diff = co2_m2 - SIA_2032_LIMIT
             if diff <= 0:
-                # Unter Grenzwert: Petrol (positiv)
                 d_color = COLORS["error_ok"]
                 d_text = f"↓ {abs(diff):.1f} unter SIA 2032 ({SIA_2032_LIMIT:.0f} kg/m²)"
             else:
-                # Über Grenzwert: Amber (Warnung, kein Rot)
                 d_color = COLORS["error_warning"]
                 d_text = f"↑ {diff:.1f} über SIA 2032 ({SIA_2032_LIMIT:.0f} kg/m²)"
-            _kpi_card("CO2e pro m² NGF", f"{co2_m2:.1f} kg/m²", d_text, d_color)
+            kpi_card("CO2e pro m² NGF", f"{co2_m2:.1f} kg/m²", d_text, d_color)
         else:
-            _kpi_card("CO2e pro m² NGF", "–")
+            kpi_card("CO2e pro m² NGF", "–")
     with kpi[2]:
-        _kpi_card(
+        kpi_card(
             "Graue Energie",
             f"{summary['grey_energy_total']:,.0f} kWh" if summary["grey_energy_total"] else "–"
         )
     with kpi[3]:
-        _kpi_card(
+        kpi_card(
             "Graue Energie/m²",
             f"{summary['energy_per_m2']:.1f} kWh/m²" if summary.get("energy_per_m2") else "–"
         )
 
-    # SIA 2032 annotation
     if summary.get("co2e_per_m2"):
         co2_m2 = summary["co2e_per_m2"]
         pct = co2_m2 / SIA_2032_LIMIT * 100
         if co2_m2 <= SIA_2032_LIMIT:
-            sia_bg = "#D5EEF0"    # Helles Petrol – OK
+            sia_bg = "#D5EEF0"
             sia_border = COLORS["error_ok"]
             sia_status = "Innerhalb des Grenzwerts"
         else:
-            sia_bg = "#FDF3DC"    # Helles Amber – Warnung
+            sia_bg = "#FDF3DC"
             sia_border = COLORS["error_warning"]
             sia_status = "Überschreitung des Grenzwerts"
         st.markdown(
             f'<div style="background:{sia_bg};border-left:4px solid {sia_border};'
             f'border-radius:4px;padding:8px 14px;margin:8px 0;">'
             f'<b>SIA 2032:</b> {sia_status} — '
-            f'{co2_m2:.1f} / {SIA_2032_LIMIT:.0f} kg CO2e/m²·a = {pct:.0f}%</div>',
+            f'{co2_m2:.1f} / {SIA_2032_LIMIT:.0f} kg CO2e/m²·a = {pct:.0f}%</div>',
             unsafe_allow_html=True,
         )
 
@@ -146,9 +129,9 @@ with tab_co2:
             errors="coerce"
         ).sum()
         with sub[0]:
-            _kpi_card("CO2e Neubau", f"{co2_neubau:,.0f} kg")
+            kpi_card("CO2e Neubau", f"{co2_neubau:,.0f} kg")
         with sub[1]:
-            _kpi_card("CO2e Abbruch", f"{co2_abbruch:,.0f} kg")
+            kpi_card("CO2e Abbruch", f"{co2_abbruch:,.0f} kg")
 
     st.divider()
     col_bar, col_tree = st.columns(2)
@@ -185,12 +168,12 @@ with tab_co2:
 with tab_cost:
     kpi_c = st.columns(3)
     with kpi_c[0]:
-        _kpi_card(
+        kpi_card(
             "Gesamtkosten",
             f"CHF {summary['cost_total']:,.0f}" if summary["cost_total"] else "–"
         )
     with kpi_c[1]:
-        _kpi_card(
+        kpi_card(
             "Kosten pro m²",
             f"CHF {summary['cost_per_m2']:,.0f}/m²" if summary.get("cost_per_m2") else "–"
         )
@@ -200,7 +183,7 @@ with tab_cost:
             errors="coerce"
         ).sum()
         with kpi_c[2]:
-            _kpi_card("Kosten Neubau", f"CHF {cost_neubau:,.0f}")
+            kpi_card("Kosten Neubau", f"CHF {cost_neubau:,.0f}")
 
     st.divider()
     fig_cost_bar = create_cost_bar(element_df)
@@ -229,17 +212,17 @@ with tab_zirk:
 
             zk = st.columns(3)
             with zk[0]:
-                _kpi_card("Wiederverwendungspotenzial", f"{reuse_pct:.1f}%")
+                kpi_card("Wiederverwendungspotenzial", f"{reuse_pct:.1f}%")
             with zk[1]:
-                _kpi_card("Anteil rückbaubarer Elemente", f"{deconstruct_pct:.1f}%")
+                kpi_card("Anteil rückbaubarer Elemente", f"{deconstruct_pct:.1f}%")
             with zk[2]:
-                _kpi_card("Geschätzter Residualwert", f"CHF {cost_bestand:,.0f}")
+                kpi_card("Geschätzter Residualwert", f"CHF {cost_bestand:,.0f}")
 
             st.caption("Vereinfachte Schätzung auf Basis von Materialtypen und Statusangaben.")
         else:
             st.warning("Keine Statusdaten für Zirkularitätsanalyse verfügbar.")
 
-# ── Section D: Detail Table ─────────────────────────────────────────────
+# ── Section D: Detail Table ─────────────────────────────────────────────────────
 st.divider()
 st.subheader("Elementdetails")
 

@@ -56,22 +56,25 @@ def _empty_fig(message: str) -> go.Figure:
 
 def _get_room_color(usage: str, force_orange: bool = False) -> str:
     usage_lower = str(usage).lower().strip()
+    
+    # "Gesamt" (parent root) is ALWAYS orange as requested!
+    if "gesamt" in usage_lower:
+        return "#E67E22"  # Bright Orange
+        
     if force_orange:
         # Beautiful shades of orange for the "Gesamt" clicked state
-        if "gesamt" in usage_lower:
-            return "#D35400"      # Dark Orange for parent
-        elif "veloraum" in usage_lower:
-            return "#E67E22"      # Rich Orange
+        if "veloraum" in usage_lower:
+            return "#D35400"      # Dark Orange
         elif "bar" in usage_lower or "empfang" in usage_lower:
-            return "#F39C12"      # Gold Orange
+            return "#E67E22"      # Rich Orange
         elif "saal" in usage_lower:
-            return "#FF9800"      # Amber Orange
+            return "#F39C12"      # Amber Orange
         elif "restaurant" in usage_lower:
-            return "#FFA726"      # Soft Orange
+            return "#FF9800"      # Light Orange
         elif "warteraum" in usage_lower:
-            return "#FFB74D"      # Pastel Orange
+            return "#FFA726"      # Gold Orange
         else:
-            return "#FFE0B2"      # Very Light Orange
+            return "#FFB74D"      # Soft Orange
 
     for key, color in ROOM_COLORS.items():
         if key.lower() in usage_lower:
@@ -128,6 +131,7 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
         texttemplate="<b>%{label}</b><br>%{value:.1f} m²",
         hovertemplate="<b>%{label}</b><br>Fläche: %{value:.1f} m²<br>Anteil: %{percentRoot:.1%}<extra></extra>",
         marker=dict(colors=colors, colorscale=None),
+        textfont=dict(size=14, family="Inter, sans-serif"), # Larger text and numbers!
     ))
     apply_default_layout(fig, "Raumfläche nach Nutzungstyp (NFA)")
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))

@@ -9,6 +9,8 @@ from src.chart_factory import (
     create_room_bubble,
     create_co2_treemap,
     create_status_distribution,
+    create_material_quantity_bar,
+    create_class_bar_horizontal,
 )
 from src.impact_calculator import get_impact_summary
 from src.ui_helpers import kpi_card
@@ -28,19 +30,20 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
+    st.warning("Please upload an IFC file on **Page 1** first.")
     st.stop()
 
 element_df = get_element_df(filtered=True)
 space_df = get_space_df(filtered=True)
+has_spaces = space_df is not None and not space_df.empty
 
-# ── Mode Badge ────────────────────────────────────────────────────────────────────────
+# ── Mode Badge ────────────────────────────────────────────────────────────────
 if mode == "neubau":
-    mode_label = "Neubau"
+    mode_label = "New Build"
     mode_bg = "#D5EEF0"
     mode_border = COLORS["neubau"]
 else:
-    mode_label = "Umbau / Sanierung"
+    mode_label = "Renovation"
     mode_bg = "#EDE3D5"
     mode_border = COLORS["abbruch"]
 
@@ -52,8 +55,7 @@ st.markdown(
 )
 st.title("Overview")
 
-# ── KPI Row ───────────────────────────────────────────────────────────────────────
-# Fix: single call to get_quality_data() — previous code called it twice
+# ── KPI Row ───────────────────────────────────────────────────────────────────
 _, quality_summary = get_quality_data()
 summary = get_impact_summary(element_df, space_df, mode)
 score = quality_summary.get("score", 0) if quality_summary else 0
@@ -61,37 +63,38 @@ co2_per_m2 = summary.get("co2e_per_m2") if summary else None
 
 kpi = st.columns(5)
 with kpi[0]:
-    kpi_card("Bauelemente", f"{len(element_df):,}" if element_df is not None else "–")
+    kpi_card("Elements", f"{len(element_df):,}" if element_df is not None else "\u2013")
 with kpi[1]:
-    kpi_card("Räume", f"{len(space_df):,}" if space_df is not None and not space_df.empty else "–")
+    kpi_card("Rooms", f"{len(space_df):,}" if has_spaces else "n/a")
 with kpi[2]:
     kpi_card(
-        "Geschosse",
-        f"{element_df['storey'].nunique():,}" if element_df is not None and "storey" in element_df.columns else "–"
+        "Storeys",
+        f"{element_df['storey'].nunique():,}" if element_df is not None and "storey" in element_df.columns else "\u2013"
     )
 with kpi[3]:
     if co2_per_m2:
         diff = co2_per_m2 - SIA_2032_LIMIT
         if diff <= 0:
             d_color = COLORS["error_ok"]
-            d_text = f"↓ {abs(diff):.1f} unter SIA 2032"
+            d_text = f"\u2193 {abs(diff):.1f} below SIA 2032"
         else:
             d_color = COLORS["error_warning"]
-            d_text = f"↑ {diff:.1f} über SIA 2032"
-        kpi_card("CO₂e / m² NGF", f"{co2_per_m2:.1f} kg/m²", d_text, d_color)
+            d_text = f"\u2191 {diff:.1f} above SIA 2032"
+        kpi_card("CO\u2082e / m\u00b2 NFA", f"{co2_per_m2:.1f} kg/m\u00b2", d_text, d_color)
     else:
-        kpi_card("CO₂e / m² NGF", "–", f"Limit: {SIA_2032_LIMIT:.0f} kg/m²·a", COLORS["text_light"])
+        kpi_card("CO\u2082e / m\u00b2 NFA", "\u2013", f"Limit: {SIA_2032_LIMIT:.0f} kg/m\u00b2\u00b7a", COLORS["text_light"])
 with kpi[4]:
     q_color = COLORS["error_ok"] if score >= 80 else COLORS["error_warning"] if score >= 50 else COLORS["error_critical"]
-    kpi_card("Modellqualität", f"{score:.0f}%", delta_color=q_color)
+    kpi_card("Model Quality", f"{score:.0f}%", delta_color=q_color)
 
 st.divider()
 
-# ── Row 1: Sunburst + Bubble Chart ─────────────────────────────────────────────────
-col_sun, col_bubble = st.columns(2)
+# ── Row 1: Main Charts ─────────────────────────────────────────────────────────
+col_left, col_right = st.columns(2)
 
-with col_sun:
-    if space_df is not None and not space_df.empty:
+if has_spaces:
+    # IFC has rooms: show Sunburst + Bubble
+    with col_left:
         fig_sun = create_room_sunburst(space_df)
         sel_sun = plotly_events(fig_sun, click_event=True, key="ov_sunburst", override_height=420)
         if sel_sun:
@@ -101,25 +104,33 @@ with col_sun:
                 prev = st.session_state.get("overview_storey")
                 st.session_state.overview_storey = None if clicked_label == prev else clicked_label
                 st.rerun()
-    else:
-        st.info("Keine Raumdaten verfügbar.")
-
-with col_bubble:
-    if space_df is not None and not space_df.empty:
+    with col_right:
         sel_storey = st.session_state.get("overview_storey")
         df_bubble = space_df[space_df["storey"] == sel_storey] if sel_storey and "storey" in space_df.columns else space_df
-        # Fix: removed broken inline reset link — real reset button is shown below
         if sel_storey:
-            st.caption(f"🔍 Gefiltert: Geschoss **{sel_storey}**")
+            st.caption(f"\ud83d\udd0d Filtered: Storey **{sel_storey}**")
         fig_bubble = create_room_bubble(df_bubble)
         st.plotly_chart(fig_bubble, use_container_width=True, key="ov_bubble")
-    else:
-        st.info("Keine Raumdaten für Bubble Chart verfügbar.")
-
-if st.session_state.get("overview_storey"):
-    if st.button("× Geschoss-Filter zurücksetzen", key="ov_reset"):
-        st.session_state.overview_storey = None
-        st.rerun()
+    if st.session_state.get("overview_storey"):
+        if st.button("\u00d7 Reset storey filter", key="ov_reset"):
+            st.session_state.overview_storey = None
+            st.rerun()
+else:
+    # No rooms: show Material breakdown + IFC Class breakdown
+    with col_left:
+        st.subheader("Materials by Volume")
+        if element_df is not None and not element_df.empty:
+            fig_mat = create_material_quantity_bar(element_df, "m\u00b3")
+            st.plotly_chart(fig_mat, use_container_width=True, key="ov_mat_bar")
+        else:
+            st.info("No element data available.")
+    with col_right:
+        st.subheader("Elements by IFC Class")
+        if element_df is not None and not element_df.empty:
+            fig_cls = create_class_bar_horizontal(element_df)
+            st.plotly_chart(fig_cls, use_container_width=True, key="ov_cls_bar")
+        else:
+            st.info("No element data available.")
 
 st.divider()
 
@@ -132,10 +143,11 @@ else:
 
 with col_tree:
     if element_df is not None and not element_df.empty:
+        st.subheader("CO\u2082 Impact by Material")
         fig_tree = create_co2_treemap(element_df)
         st.plotly_chart(fig_tree, use_container_width=True, key="ov_co2tree")
     else:
-        st.info("Keine CO₂-Daten verfügbar.")
+        st.info("No CO\u2082 data available.")
 
 if col_donut is not None:
     with col_donut:
@@ -150,21 +162,20 @@ if col_donut is not None:
                 line=dict(color="white", width=2),
             ),
             textinfo="label+percent",
-            hovertemplate="<b>%{label}</b><br>Anzahl: %{value}<br>Anteil: %{percent}<extra></extra>",
+            hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Share: %{percent}<extra></extra>",
         ))
         fig_donut.update_layout(
-            title=dict(text="Statusverteilung", font=dict(size=16, color=COLORS["text"]), x=0),
+            title=dict(text="Status Distribution", font=dict(size=16, color=COLORS["text"]), x=0),
             paper_bgcolor="rgba(0,0,0,0)",
             margin=dict(l=20, r=20, t=50, b=20),
             legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
             annotations=[dict(
-                text=f"<b>{total_el:,}</b><br><span style='font-size:11px;color:{COLORS['text_light']}'>Elemente</span>",
+                text=f"<b>{total_el:,}</b><br><span style='font-size:11px;color:{COLORS['text_light']}'>Elements</span>",
                 x=0.5, y=0.5, font_size=18, showarrow=False, font_color=COLORS["text"],
             )],
         )
         st.plotly_chart(fig_donut, use_container_width=True, key="ov_donut")
 
-# ── Row 3 (Umbau): Statusverteilung pro IFC-Klasse ─────────────────────────────
 if mode == "umbau" and element_df is not None and "status" in element_df.columns:
     st.divider()
     fig_status = create_status_distribution(element_df)

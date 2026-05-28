@@ -5,8 +5,7 @@ from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
     create_quality_gauge,
     create_error_bar,
-    create_status_distribution, create_pset_matrix_heatmap,
-    create_upset_plot,
+    create_pset_matrix_heatmap,
 )
 from src.quality_checker import build_pset_matrix
 
@@ -38,19 +37,18 @@ if not quality_summary:
 st.title("Quality Check")
 st.caption("Analyses how complete and consistent your IFC model data is.")
 
-CF_KEYS = ["cf_page6_error_cat", "cf_page6_status_class"]
+CF_KEYS = ["cf_page6_error_cat"]
 render_cross_filter_reset("page6", CF_KEYS)
-
-# -- Section A: Quality Score --------------------------------------------------
-col_score, col_traffic = st.columns(2)
 
 score = quality_summary.get("score", 0)
 error_counts = quality_summary.get("error_counts", {})
 total_elements = quality_summary.get("total_elements", 0)
 
-with col_score:
-    fig_gauge = create_quality_gauge(score)
-    st.plotly_chart(fig_gauge, use_container_width=True)
+# -- Quality Score KPI (static, compact) ---------------------------------------
+col_gauge, col_traffic = st.columns([1, 2])
+
+with col_gauge:
+    st.plotly_chart(create_quality_gauge(score), use_container_width=True)
 
 with col_traffic:
     st.subheader("Quality Indicators")
@@ -58,14 +56,14 @@ with col_traffic:
 
     def _traffic_light(count, label):
         if count == 0:
-            badge, color, weight = "OK", "#D6EAF8", "600"
+            badge, color = "OK", "#D6EAF8"
         elif count <= 10:
-            badge, color, weight = "Warning", "#FCF3CF", "600"
+            badge, color = "Warning", "#FCF3CF"
         else:
-            badge, color, weight = "Critical", "#FDEBD0", "700"
+            badge, color = "Critical", "#FDEBD0"
         st.markdown(
             f'<div style="background:{color};border-radius:6px;padding:8px 12px;margin:4px 0;">'
-            f'<b style="font-weight:{weight};">[{badge}]</b> {label}: <b>{count}</b></div>',
+            f'<b>[{badge}]</b> {label}: <b>{count}</b></div>',
             unsafe_allow_html=True,
         )
 
@@ -84,16 +82,18 @@ with col_traffic:
 
 st.divider()
 
-# -- Section B: Error Analysis -------------------------------------------------
-has_errors = error_df is not None and not error_df.empty
 total_errors = sum(error_counts.values())
 
 if total_errors == 0:
     st.success("No errors found -- your IFC model is complete!")
 else:
+    # -- Chart A: Error Bar (interactive, filters error table below) -----------
+    # -- Chart B: Pset Heatmap (shows property set completeness per IFC class) -
     st.caption("Click a bar to filter the error table below. Click again to deselect.")
-    col_err, col_status = st.columns(2)
+    col_err, col_pset = st.columns(2)
+
     with col_err:
+        st.subheader("Errors by Type")
         fig_err = create_error_bar(error_counts)
         ev_err = st.plotly_chart(fig_err, on_select="rerun", key="cf_p6_error_bar", use_container_width=True)
         if ev_err and ev_err.selection.points:
@@ -107,72 +107,34 @@ else:
                 "Kein Status": "missing_status",
             }
             mapped = label_map.get(clicked, clicked)
-            if mapped == st.session_state.get("cf_page6_error_cat"):
-                st.session_state.cf_page6_error_cat = None
-            else:
-                st.session_state.cf_page6_error_cat = mapped
+            st.session_state.cf_page6_error_cat = None if mapped == st.session_state.get("cf_page6_error_cat") else mapped
             st.rerun()
 
-    with col_status:
-        if mode == "umbau":
-            fig_status = create_status_distribution(element_df)
-            ev_status = st.plotly_chart(fig_status, on_select="rerun", key="cf_p6_status_bar", use_container_width=True)
-            if ev_status and ev_status.selection.points:
-                pt = ev_status.selection.points[0]
-                clicked = pt.get("x") or pt.get("y") or pt.get("label")
-                if clicked == st.session_state.get("cf_page6_status_class"):
-                    st.session_state.cf_page6_status_class = None
-                else:
-                    st.session_state.cf_page6_status_class = clicked
-                st.rerun()
-        else:
-            st.subheader("Pset Completeness by IFC Class")
-            if not element_df.empty and "psets" in element_df.columns:
-                pset_counts = element_df.groupby("ifc_class")["psets"].apply(
-                    lambda x: (x.apply(lambda p: len(p) > 0 if isinstance(p, dict) else False)).sum()
-                ).reset_index()
-                pset_counts.columns = ["IFC Class", "Elements with Psets"]
-                total_per_class = element_df["ifc_class"].value_counts().reset_index()
-                total_per_class.columns = ["IFC Class", "Total"]
-                merged = pset_counts.merge(total_per_class, on="IFC Class")
-                merged["Completeness (%)"] = (merged["Elements with Psets"] / merged["Total"] * 100).round(1)
-                st.dataframe(merged, use_container_width=True, hide_index=True)
+    with col_pset:
+        st.subheader("Pset Availability by IFC Class")
+        st.caption("Blue = present, Gray = missing.")
+        if element_df is not None and not element_df.empty:
+            pset_matrix = build_pset_matrix(element_df)
+            if pset_matrix is not None and not pset_matrix.empty:
+                if len(pset_matrix.columns) > 15:
+                    top_cols = pset_matrix.sum().nlargest(15).index
+                    pset_matrix = pset_matrix[top_cols]
+                st.plotly_chart(create_pset_matrix_heatmap(pset_matrix), use_container_width=True)
             else:
                 st.info("No Pset data available.")
+        else:
+            st.info("No element data available.")
 
-    st.divider()
-    st.subheader("Error Co-occurrence")
-    st.caption("Which error combinations appear together? Each column = one combination.")
-    if has_errors:
-        st.plotly_chart(create_upset_plot(error_df), use_container_width=True)
-
-# -- Section C: Pset Matrix ----------------------------------------------------
-st.divider()
-st.subheader("Pset Availability Matrix")
-st.caption("Blue = Pset present, Gray = missing. Shows which property sets are assigned to which elements.")
-
-if element_df is not None and not element_df.empty:
-    pset_matrix = build_pset_matrix(element_df)
-    if pset_matrix is not None and not pset_matrix.empty:
-        if len(pset_matrix.columns) > 15:
-            top_cols = pset_matrix.sum().nlargest(15).index
-            pset_matrix = pset_matrix[top_cols]
-        st.plotly_chart(create_pset_matrix_heatmap(pset_matrix), use_container_width=True)
-    else:
-        st.info("No Pset data available for matrix.")
-
-# -- Section D: Error Detail Table ---------------------------------------------
+# -- Error Detail Table --------------------------------------------------------
 st.divider()
 st.subheader("Error Details")
 
+has_errors = error_df is not None and not error_df.empty
 if has_errors:
     table_df = error_df.copy()
     cf_cat = st.session_state.get("cf_page6_error_cat")
-    cf_cls = st.session_state.get("cf_page6_status_class")
     if cf_cat and "error_type" in table_df.columns:
         table_df = table_df[table_df["error_type"] == cf_cat]
-    if cf_cls and "ifc_class" in table_df.columns:
-        table_df = table_df[table_df["ifc_class"] == cf_cls]
 
     display_df = table_df.rename(columns={
         "element_id": "Element ID", "ifc_class": "IFC Class",

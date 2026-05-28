@@ -55,17 +55,71 @@ def _parse_archicad_co2(value) -> Optional[float]:
     if value is None:
         return None
     try:
-        # Already a number
         return float(value)
     except (TypeError, ValueError):
         pass
-    # Extract leading number from string like "787.19 kgCO220820"
     match = re.match(r"^\s*([\d]+(?:[.,]\d+)?)", str(value))
     if match:
         try:
             return float(match.group(1).replace(",", "."))
         except ValueError:
             pass
+    return None
+
+
+def _estimate_volume(quantities: dict, ifc_class: str) -> Optional[float]:
+    """
+    Fallback-Volumenberechnung wenn kein IfcQuantityVolume vorhanden.
+    Strategie:
+      1. Fläche × Dicke aus Pset (Wandstärke, Slab-Dicke)
+      2. Länge × Annahme-Querschnitt für Balken/Stützen
+      3. Fläche × Standarddicke pro IFC-Klasse als letzter Fallback
+    """
+    area   = quantities.get("area")
+    length = quantities.get("length")
+    thickness = quantities.get("thickness")
+
+    # 1. Fläche × Dicke (Wand, Decke, Boden)
+    if area and thickness:
+        try:
+            return float(area) * float(thickness)
+        except (TypeError, ValueError):
+            pass
+
+    # 2. Länge × Standard-Querschnitt für Stabwerkelemente
+    if length:
+        try:
+            l = float(length)
+            # HEB 200 ≈ 0.0054 m² Querschnitt als Durchschnittswert
+            cross_section = {
+                "IfcBeam":   0.006,   # ca. HEB 200
+                "IfcColumn": 0.09,    # ca. 300x300 mm
+                "IfcMember": 0.004,   # dünneres Profil
+                "IfcRailing": 0.001,
+            }.get(ifc_class, 0.004)
+            return l * cross_section
+        except (TypeError, ValueError):
+            pass
+
+    # 3. Fläche × Standarddicke als letzter Fallback
+    if area:
+        try:
+            a = float(area)
+            default_thickness = {
+                "IfcWall":              0.25,
+                "IfcWallStandardCase":  0.25,
+                "IfcSlab":              0.30,
+                "IfcRoof":              0.25,
+                "IfcCovering":          0.02,
+                "IfcCurtainWall":       0.05,
+                "IfcDoor":              0.05,
+                "IfcWindow":            0.03,
+                "IfcPlate":             0.01,
+            }.get(ifc_class, 0.10)
+            return a * default_thickness
+        except (TypeError, ValueError):
+            pass
+
     return None
 
 
@@ -81,7 +135,7 @@ def extract_elements(model, element_to_storey: dict) -> list[dict]:
                 seen_ids.add(element.id())
 
                 psets = extract_psets(element)
-                quantities = extract_quantities(element)
+                quantities = extract_quantities(element, psets)
                 materials = extract_materials(element)
 
                 # ── Extract embedded ArchiCAD CO2 & energy values ──────────
@@ -99,6 +153,12 @@ def extract_elements(model, element_to_storey: dict) -> list[dict]:
                             except (TypeError, ValueError):
                                 pass
 
+                volume = quantities.get("volume")
+
+                # ── Volumen-Fallback wenn kein IfcQuantityVolume vorhanden ──
+                if volume is None:
+                    volume = _estimate_volume(quantities, element.is_a())
+
                 elements.append({
                     "element_id": element.id(),
                     "global_id": getattr(element, "GlobalId", ""),
@@ -109,7 +169,7 @@ def extract_elements(model, element_to_storey: dict) -> list[dict]:
                     "materials_all": materials,
                     "psets": psets,
                     "area_m2": quantities.get("area"),
-                    "volume_m3": quantities.get("volume"),
+                    "volume_m3": volume,
                     "length_m": quantities.get("length"),
                     "weight_kg": quantities.get("weight"),
                     "co2e_archicad": co2_archicad,
@@ -126,7 +186,7 @@ def extract_spaces(model, element_to_storey: dict) -> list[dict]:
     try:
         for space in model.by_type("IfcSpace"):
             psets = extract_psets(space)
-            quantities = extract_quantities(space)
+            quantities = extract_quantities(space, psets)
 
             area = quantities.get("area")
             if area is None:
@@ -194,7 +254,7 @@ def extract_psets(element) -> dict:
     return psets
 
 
-def extract_quantities(element) -> dict:
+def extract_quantities(element, psets: dict = None) -> dict:
     quantities = {}
     try:
         for rel in element.IsDefinedBy:
@@ -215,6 +275,27 @@ def extract_quantities(element) -> dict:
                             continue
     except Exception:
         pass
+
+    # ── Pset-Fallback für Dicke (wird später in _estimate_volume gebraucht) ──
+    if psets and "thickness" not in quantities:
+        thickness_keys = [
+            "Width", "Thickness", "Breite", "Dicke",
+            "WallThickness", "SlabThickness", "OverallThickness",
+        ]
+        for pset_data in psets.values():
+            for key in thickness_keys:
+                val = pset_data.get(key)
+                if val is not None:
+                    try:
+                        t = float(val)
+                        if 0.001 < t < 5.0:  # Plausibilitätsprüfung: 1 mm – 5 m
+                            quantities["thickness"] = t
+                            break
+                    except (TypeError, ValueError):
+                        pass
+            if "thickness" in quantities:
+                break
+
     return quantities
 
 

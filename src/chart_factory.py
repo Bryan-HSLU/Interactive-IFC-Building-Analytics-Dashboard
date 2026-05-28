@@ -338,27 +338,61 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return _empty_fig("Keine quantitativen Werte für Scatter Plot")
 
-    usages = sorted(df["usage"].unique(), key=lambda x: (x in ("Andere", "Unbekannt", "Sonstige"), x))
+    # Define room groups according to the user request
+    RAUM_GRUPPEN = {
+        "Veloraum":     ("Lager/Technik",  "#5C6E7E"),
+        "Abstellkamer": ("Lager/Technik",  "#5C6E7E"),
+        "Abstellraum":  ("Lager/Technik",  "#5C6E7E"),
+        "Technik":      ("Lager/Technik",  "#5C6E7E"),
+        "Saal":         ("Aufenthalt",     "#2E86AB"),
+        "Restaurant":   ("Aufenthalt",     "#2E86AB"),
+        "Bar/Empfang":  ("Aufenthalt",     "#2E86AB"),
+        "Warteraum":    ("Aufenthalt",     "#2E86AB"),
+        "Backstage":    ("Aufenthalt",     "#2E86AB"),
+        "WC":           ("Sanitär",        "#C8A96E"),
+        "WC Damen":     ("Sanitär",        "#C8A96E"),
+        "WC Herren":    ("Sanitär",        "#C8A96E"),
+        "Treppenhaus":  ("Verkehr",        "#F0C987"),
+        "Vorraum":      ("Verkehr",        "#F0C987"),
+    }
+
+    def _group_room_usage(usage: str) -> tuple[str, str]:
+        usage_clean = str(usage).strip()
+        for key, (group, color) in RAUM_GRUPPEN.items():
+            if key.lower() in usage_clean.lower():
+                return group, color
+        return "Andere", "#CCCCCC"
+
+    df["grouped_usage"] = df["usage"].apply(lambda u: _group_room_usage(u)[0])
+    df["group_color"] = df["usage"].apply(lambda u: _group_room_usage(u)[1])
+
+    # Dynamic groups based on data
+    group_order = ["Aufenthalt", "Lager/Technik", "Sanitär", "Verkehr", "Andere"]
+    usages = [u for u in group_order if u in df["grouped_usage"].values]
+
     fig = go.Figure()
 
-    # Track data to calculate regression line
+    # Track all data for regression
     all_x = df["area_m2"].tolist()
     all_y = df["co2_load"].tolist()
 
-    # Scatter points by room type with consistent colors
+    # Plot grouped scatter points
     for usage in usages:
-        sub = df[df["usage"] == usage]
-        color = _get_room_color(usage)
+        sub = df[df["grouped_usage"] == usage]
+        color = sub["group_color"].iloc[0]
         names = sub["name"].astype(str).tolist() if "name" in sub.columns else ["Raum"] * len(sub)
+        
         fig.add_trace(go.Scatter(
             x=sub["area_m2"], y=sub["co2_load"],
             mode="markers", name=usage,
-            marker=dict(color=color, size=9, opacity=0.85, line=dict(width=0.5, color="white")),
+            marker=dict(color=color, size=10, opacity=0.85, line=dict(width=0.5, color="white")),
             text=names,
-            hovertemplate="<b>%{text}</b><br>Nutzung: " + usage + "<br>Fläche: %{x:.1f} m²<br>CO₂-Last: %{y:,.0f} kg<extra></extra>",
+            customdata=sub["usage"].tolist(),
+            hovertemplate="<b>%{text}</b><br>Kategorie: " + usage + "<br>Typ: %{customdata}<br>Fläche: %{x:.1f} m²<br>CO₂-Last: %{y:,.0f} kg<extra></extra>",
         ))
 
     # Add Regression/Trend Line
+    m, c = 0, 0
     if len(all_x) > 1:
         try:
             m, c = np.polyfit(all_x, all_y, 1)
@@ -373,8 +407,52 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
         except Exception:
             pass
 
+    # Add Outlier Annotations (Rooms with largest positive residuals relative to trendline)
+    if len(all_x) > 1 and m != 0:
+        df["y_pred"] = m * df["area_m2"] + c
+        df["residual"] = df["co2_load"] - df["y_pred"]
+        
+        # Select positive residuals (above the trendline), sorted descending
+        outliers = df[df["residual"] > 0].sort_values("residual", ascending=False)
+        
+        # Annotate top 3 outliers
+        for idx, row in outliers.head(3).iterrows():
+            room_name = row.get("name") or "Raum"
+            room_type = row.get("usage") or ""
+            label_text = f"{room_name} ({room_type})" if room_type else room_name
+            
+            fig.add_annotation(
+                x=row["area_m2"],
+                y=row["co2_load"],
+                text=label_text,
+                showarrow=True,
+                arrowhead=2,
+                arrowcolor="#D94F3D",
+                arrowsize=0.8,
+                ax=45,
+                ay=-30,
+                font=dict(size=10, color="#2D2D2D", family="Inter, sans-serif"),
+                bgcolor="rgba(253, 237, 236, 0.95)",
+                bordercolor="#FADBD8",
+                borderwidth=1,
+                borderpad=3,
+            )
+
     apply_default_layout(fig, "Raumfläche vs. CO₂-Last")
-    fig.update_layout(xaxis_title="Raumfläche (m²)", yaxis_title="CO₂-Last (kg CO₂eq)")
+    fig.update_layout(
+        xaxis_title="Raumfläche (m²)", 
+        yaxis_title="CO₂-Last (kg CO₂eq)",
+        xaxis=dict(range=[0, 50]), # Set default zoom range to 0-50m² to avoid squishing
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.05,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11),
+        ),
+        margin=dict(t=80), # larger top margin for title & legend
+    )
     return fig
 
 

@@ -368,7 +368,7 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             y=pivot_pct[grp],
             name=grp,
             marker_color=color,
-            hovertemplate=f"<b>%{x}</b><br>{grp}: %{y:.1f}%<extra></extra>",
+            hovertemplate=f"<b>%{{x}}</b><br>{grp}: %{{y:.1f}}%<extra></extra>",
         ))
 
     fig.update_layout(barmode="stack")

@@ -128,7 +128,7 @@ def create_room_histogram(space_df: pd.DataFrame) -> go.Figure:
         nbinsx=20,
         marker_color=COLORS["primary"],
         opacity=0.8,
-        hovertemplate="Fläche: %{x:.0f}–%{x:.0f} m²<br>Anzahl: %{y}<extra></extra>",
+        hovertemplate="Fläche: %{x:.0f}–%{x:.0f} m²<br>Anzahl Räume: %{y}<extra></extra>",
     ))
     fig.add_vline(
         x=mean_val, line_dash="dash", line_color=COLORS["text_light"], line_width=1.5,
@@ -160,10 +160,13 @@ def create_class_bar_horizontal(element_df: pd.DataFrame) -> go.Figure:
         marker_color=colors,
         text=counts["count"],
         textposition="outside",
-        hovertemplate="<b>%{y}</b><br>Anzahl: %{x}<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>Anzahl Elemente: %{x}<extra></extra>",
     ))
-    apply_default_layout(fig, "Elemente pro IFC-Klasse")
-    fig.update_layout(xaxis_title="Anzahl", yaxis_title="")
+    apply_default_layout(fig, "Anzahl Elemente pro IFC-Klasse")
+    fig.update_layout(
+        xaxis_title="Anzahl Elemente",
+        yaxis_title="IFC-Klasse",
+    )
     return fig
 
 
@@ -186,12 +189,12 @@ def create_class_storey_stacked(element_df: pd.DataFrame, storey_order: list = N
             y=pivot[col],
             name=col,
             marker_color=color,
-            hovertemplate=f"<b>%{{x}}</b><br>{col}: %{{y}}<extra></extra>",
+            hovertemplate=f"<b>%{{x}}</b><br>{col}: %{{y}} Elemente<extra></extra>",
         ))
 
     fig.update_layout(barmode="stack")
-    apply_default_layout(fig, "Elemente nach Geschoss und Klasse")
-    fig.update_layout(xaxis_title="Geschoss", yaxis_title="Anzahl")
+    apply_default_layout(fig, "Elemente nach Geschoss und IFC-Klasse")
+    fig.update_layout(xaxis_title="Geschoss", yaxis_title="Anzahl Elemente")
     return fig
 
 
@@ -215,10 +218,10 @@ def create_material_quantity_bar(element_df: pd.DataFrame, unit: str = "m³") ->
         y=agg["material"],
         orientation="h",
         marker_color=colors,
-        hovertemplate=f"<b>%{{y}}</b><br>Menge: %{{x:.1f}} {unit}<extra></extra>",
+        hovertemplate=f"<b>%{{y}}</b><br>Volumen: %{{x:.1f}} {unit}<extra></extra>",
     ))
-    apply_default_layout(fig, f"Materialmenge ({unit})")
-    fig.update_layout(xaxis_title=unit, yaxis_title="")
+    apply_default_layout(fig, f"Verbau­tes Volumen pro Material ({unit})")
+    fig.update_layout(xaxis_title=f"Volumen ({unit})", yaxis_title="Material")
     return fig
 
 
@@ -251,8 +254,8 @@ def create_diverging_bar(element_df: pd.DataFrame) -> go.Figure:
         customdata=[abbruch.get(m, 0) for m in materials],
     ))
     fig.update_layout(barmode="relative")
-    apply_default_layout(fig, "Neubau vs. Abbruch (m³)")
-    fig.update_layout(xaxis_title="Volumen (m³)", yaxis_title="")
+    apply_default_layout(fig, "Neubau vs. Abbruch nach Material (m³)")
+    fig.update_layout(xaxis_title="Volumen (m³)", yaxis_title="Material")
     return fig
 
 
@@ -278,10 +281,10 @@ def create_co2_bar(element_df: pd.DataFrame) -> go.Figure:
         orientation="h",
         marker_color=COLORS["primary"],
         customdata=agg["pct"],
-        hovertemplate="<b>%{y}</b><br>CO2e: %{x:,.0f} kg<br>Anteil: %{customdata:.1f}%<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>CO₂e: %{x:,.0f} kg<br>Anteil am Total: %{customdata:.1f}%<extra></extra>",
     ))
-    apply_default_layout(fig, "CO2e nach Materialgruppe")
-    fig.update_layout(xaxis_title="CO2e (kg)", yaxis_title="")
+    apply_default_layout(fig, "CO₂e-Emissionen pro Material")
+    fig.update_layout(xaxis_title="CO₂e (kg)", yaxis_title="Material")
     return fig
 
 
@@ -298,7 +301,6 @@ def create_co2_treemap(element_df: pd.DataFrame) -> go.Figure:
 
     mat_totals = agg.groupby("material")["co2e_total"].sum().reset_index()
 
-    # fix #4: doppelte Initialisierung entfernt – direkt mit den korrekten Variablen starten
     labels, parents, values, ids = ["Gesamt"], [""], [0], ["root"]
 
     for _, row in mat_totals.iterrows():
@@ -319,15 +321,19 @@ def create_co2_treemap(element_df: pd.DataFrame) -> go.Figure:
         parents=parents,
         values=values,
         branchvalues="total",
-        hovertemplate="<b>%{label}</b><br>CO2e: %{value:,.0f} kg<br>Anteil: %{percentRoot:.1%}<extra></extra>",
+        hovertemplate="<b>%{label}</b><br>CO₂e: %{value:,.0f} kg<br>Anteil am Total: %{percentRoot:.1%}<extra></extra>",
         marker=dict(
             colorscale=[[0, "#D5EEF0"], [0.5, "#1A7F8E"], [1, "#0D4A52"]],
             showscale=True,
-            colorbar_title="CO2e (kg)",
+            colorbar_title="CO₂e (kg)",
         ),
+        # Start one level below root so the giant "Gesamt" bar is never shown
+        level="Gesamt",
     ))
-    apply_default_layout(fig, "CO2e nach Material und IFC-Klasse")
-    fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))
+    apply_default_layout(fig, "CO₂e-Anteil: Material → IFC-Klasse")
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
     return fig
 
 
@@ -351,7 +357,7 @@ def create_cost_heatmap(element_df: pd.DataFrame) -> go.Figure:
         colorscale=[[0, "#F5EFE6"], [1, "#A0522D"]],
         text=z_text,
         texttemplate="%{text}" if z_text else "",
-        hovertemplate="Geschoss: %{y}<br>Klasse: %{x}<br>Kosten: CHF %{z:,.0f}<extra></extra>",
+        hovertemplate="Geschoss: %{y}<br>IFC-Klasse: %{x}<br>Kosten: CHF %{z:,.0f}<extra></extra>",
         colorbar_title="CHF",
     ))
     apply_default_layout(fig, "Kosten nach Geschoss × IFC-Klasse (CHF)")
@@ -383,10 +389,10 @@ def create_cost_bar(element_df: pd.DataFrame) -> go.Figure:
         orientation="h",
         marker_color=colors,
         customdata=agg["pct"],
-        hovertemplate="<b>%{y}</b><br>Kosten: CHF %{x:,.0f}<br>Anteil: %{customdata:.1f}%<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>Kosten: CHF %{x:,.0f}<br>Anteil am Total: %{customdata:.1f}%<extra></extra>",
     ))
     apply_default_layout(fig, "Kostentreiber nach Material")
-    fig.update_layout(xaxis_title="CHF", yaxis_title="")
+    fig.update_layout(xaxis_title="Kosten (CHF)", yaxis_title="Material")
     return fig
 
 
@@ -447,10 +453,10 @@ def create_error_bar(error_counts: dict) -> go.Figure:
         marker_color=colors,
         text=vals,
         textposition="outside",
-        hovertemplate="<b>%{x}</b><br>Anzahl: %{y}<extra></extra>",
+        hovertemplate="<b>%{x}</b><br>Betroffene Elemente: %{y}<extra></extra>",
     ))
-    apply_default_layout(fig, "Fehler nach Kategorie")
-    fig.update_layout(xaxis_title="Fehlertyp", yaxis_title="Anzahl", showlegend=False)
+    apply_default_layout(fig, "Fehlende Daten nach Fehlertyp")
+    fig.update_layout(xaxis_title="Fehlertyp", yaxis_title="Anzahl betroffener Elemente", showlegend=False)
     return fig
 
 
@@ -471,12 +477,12 @@ def create_status_distribution(element_df: pd.DataFrame) -> go.Figure:
             y=pivot_pct[status],
             name=status,
             marker_color=color,
-            hovertemplate=f"<b>%{{x}}</b><br>{status}: %{{y:.1f}}%<extra></extra>",
+            hovertemplate=f"<b>%{{x}}</b><br>{status}: %{{y:.1f}}% der Elemente<extra></extra>",
         ))
 
     fig.update_layout(barmode="stack")
     apply_default_layout(fig, "Statusverteilung pro IFC-Klasse")
-    fig.update_layout(xaxis_title="IFC-Klasse", yaxis_title="Anteil (%)")
+    fig.update_layout(xaxis_title="IFC-Klasse", yaxis_title="Anteil Elemente (%)")
     return fig
 
 
@@ -492,10 +498,10 @@ def create_pset_matrix_heatmap(pset_matrix: pd.DataFrame) -> go.Figure:
         y=pset_matrix.index.tolist(),
         colorscale=[[0, "#ECF0F1"], [1, "#1A7F8E"]],
         showscale=False,
-        hovertemplate="Klasse: %{y}<br>Pset: %{x}<br>%{text}<extra></extra>",
+        hovertemplate="IFC-Klasse: %{y}<br>Property Set: %{x}<br>Status: %{text}<extra></extra>",
         text=[["Vorhanden" if v else "Fehlt" for v in row] for row in z],
     ))
-    apply_default_layout(fig, "Pset-Verfügbarkeit nach IFC-Klasse")
+    apply_default_layout(fig, "Pset-Verfügbarkeit: IFC-Klasse × Property Set")
     fig.update_layout(xaxis_title="Property Set", yaxis_title="IFC-Klasse")
     fig.update_xaxes(tickangle=45)
     return fig
@@ -532,9 +538,9 @@ def create_room_sunburst(space_df: pd.DataFrame) -> go.Figure:
         ids=ids, labels=labels, parents=parents, values=values,
         branchvalues="total",
         insidetextorientation="radial",
-        hovertemplate=f"<b>%{{label}}</b><br>{val_label}: %{{value:.1f}}<br>Anteil: %{{percentRoot:.1%}}<extra></extra>",
+        hovertemplate=f"<b>%{{label}}</b><br>Fläche ({val_label}): %{{value:.1f}}<br>Anteil: %{{percentRoot:.1%}}<extra></extra>",
     ))
-    apply_default_layout(fig, "Raumhierarchie: Geschoss → Nutzung")
+    apply_default_layout(fig, "Raumstruktur: Geschoss → Nutzungstyp")
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))
     return fig
 
@@ -571,7 +577,7 @@ def create_room_scatter(space_df: pd.DataFrame) -> go.Figure:
 
     y_axis_label = "Raumhöhe (m)" if y_col == "height_m" else "Volumen (m³)"
     apply_default_layout(fig, "Scatter: Raumfläche vs. Raumhöhe")
-    fig.update_layout(xaxis_title="Fläche (m²)", yaxis_title=y_axis_label)
+    fig.update_layout(xaxis_title="Raumfläche (m²)", yaxis_title=y_axis_label)
     return fig
 
 
@@ -618,8 +624,8 @@ def create_room_bubble(space_df: pd.DataFrame) -> go.Figure:
         ))
 
     y_label = "Raumhöhe (m)" if y_col == "height_m" else "Volumen (m³)"
-    apply_default_layout(fig, "Bubble Chart: Fläche × Höhe × Volumen")
-    fig.update_layout(xaxis_title="Fläche (m²)", yaxis_title=y_label)
+    apply_default_layout(fig, "Bubble Chart: Raumfläche × Höhe × Volumen")
+    fig.update_layout(xaxis_title="Raumfläche (m²)", yaxis_title=y_label)
     return fig
 
 
@@ -663,7 +669,7 @@ def create_grouped_bar(element_df: pd.DataFrame, mode: str = "neubau") -> go.Fig
         ))
     fig.update_layout(barmode="group")
     apply_default_layout(fig, title)
-    fig.update_layout(xaxis_title="", yaxis_title="Volumen (m³)")
+    fig.update_layout(xaxis_title="IFC-Klasse", yaxis_title="Volumen (m³)")
     return fig
 
 
@@ -750,7 +756,7 @@ def create_volume_histogram(element_df: pd.DataFrame) -> go.Figure:
     fig = go.Figure(go.Histogram(
         x=df["volume_m3"], nbinsx=25,
         marker_color=CATEGORICAL_COLORS[4], opacity=0.8,
-        hovertemplate="Volumen: %{x:.2f} m³<br>Anzahl: %{y}<extra></extra>",
+        hovertemplate="Volumen: %{x:.2f} m³<br>Anzahl Elemente: %{y}<extra></extra>",
     ))
     fig.add_vline(x=median_val, line_dash="solid", line_color=COLORS["primary"], line_width=2,
                   annotation_text=f"Median: {median_val:.2f}",
@@ -831,10 +837,10 @@ def create_waterfall_co2(element_df: pd.DataFrame) -> go.Figure:
         increasing=dict(marker=dict(color=COLORS["abbruch"])),
         decreasing=dict(marker=dict(color=COLORS["neubau"])),
         totals=dict(marker=dict(color=COLORS["primary"])),
-        hovertemplate="<b>%{x}</b><br>CO2e: %{y:,.0f} kg<extra></extra>",
+        hovertemplate="<b>%{x}</b><br>CO₂e: %{y:,.0f} kg<extra></extra>",
     ))
-    apply_default_layout(fig, "CO2e-Beitrag nach Material (Waterfall)")
-    fig.update_layout(xaxis_title="", yaxis_title="CO2e (kg)")
+    apply_default_layout(fig, "CO₂e-Beitrag nach Material (Waterfall)")
+    fig.update_layout(xaxis_title="Material", yaxis_title="CO₂e (kg)")
     return fig
 
 
@@ -891,9 +897,9 @@ def create_sankey_material(element_df: pd.DataFrame) -> go.Figure:
         node=dict(label=nodes, color=node_colors, pad=15, thickness=15,
                   line=dict(color="white", width=0.5)),
         link=dict(source=src, target=tgt, value=val, color=clr,
-                  hovertemplate="<b>%{source.label}</b> → <b>%{target.label}</b><br>CO2e: %{value:,.0f} kg<extra></extra>"),
+                  hovertemplate="<b>%{source.label}</b> → <b>%{target.label}</b><br>CO₂e: %{value:,.0f} kg<extra></extra>"),
     ))
-    apply_default_layout(fig, "Sankey: Material → IFC-Klasse → CO2-Intensität")
+    apply_default_layout(fig, "Sankey: Material → IFC-Klasse → CO₂-Intensität")
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=440)
     return fig
 
@@ -928,13 +934,13 @@ def create_slope_co2(element_df: pd.DataFrame) -> go.Figure:
             text=[f"{row['Bestand']:,.0f}", f"{row['Neubau']:,.0f}"],
             textposition=["middle left", "middle right"],
             textfont=dict(size=9, color=color),
-            hovertemplate=f"<b>{row['material']}</b><br>%{{x}}: %{{y:,.0f}} kg CO2e<extra></extra>",
+            hovertemplate=f"<b>{row['material']}</b><br>%{{x}}: %{{y:,.0f}} kg CO₂e<extra></extra>",
         ))
 
-    apply_default_layout(fig, "Slope Chart: CO2e Bestand vs. Neubau")
+    apply_default_layout(fig, "Slope Chart: CO₂e Bestand vs. Neubau")
     fig.update_layout(
-        xaxis=dict(tickmode="array", tickvals=["Bestand", "Neubau"], title=""),
-        yaxis_title="CO2e (kg)",
+        xaxis=dict(tickmode="array", tickvals=["Bestand", "Neubau"], title="Status"),
+        yaxis_title="CO₂e (kg)",
     )
     return fig
 
@@ -982,13 +988,13 @@ def create_upset_plot(error_df: pd.DataFrame) -> go.Figure:
     fig.add_trace(go.Bar(
         x=list(range(n_combos)), y=counts["n"].tolist(),
         marker_color=bar_colors, text=counts["n"].tolist(), textposition="outside",
-        showlegend=False, hovertemplate="Kombination %{x}<br>Anzahl: %{y}<extra></extra>",
+        showlegend=False, hovertemplate="Kombination %{x}<br>Anzahl Elemente: %{y}<extra></extra>",
     ), row=1, col=1)
 
     fig.add_trace(go.Bar(
         x=set_sizes["count"].tolist(), y=error_labels,
         orientation="h", marker_color=COLORS["error_warning"],
-        showlegend=False, hovertemplate="%{y}: %{x} Elemente<extra></extra>",
+        showlegend=False, hovertemplate="%{y}: %{x} betroffene Elemente<extra></extra>",
     ), row=1, col=2)
 
     bg_x = [i for i in range(n_combos) for _ in range(n_errors)]

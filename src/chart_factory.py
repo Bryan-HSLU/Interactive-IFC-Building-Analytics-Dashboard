@@ -408,35 +408,61 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
         except Exception:
             pass
 
-    # Add Outlier Annotations (Rooms with largest positive residuals relative to trendline)
+    # Add Outlier Annotations
     if len(all_x) > 1 and m != 0:
-        df["y_pred"] = m * df["area_m2"] + c
-        df["residual"] = df["co2_load"] - df["y_pred"]
-        
-        # Select positive residuals (above the trendline), sorted descending
-        above_trend = df[df["residual"] > 0]
-        
-        if not above_trend.empty:
-            std_residual = df["residual"].std()
-            if pd.isna(std_residual) or std_residual <= 0:
-                std_residual = 1.0
-                
-            # Filter for significant outliers: residual must be at least 1.2 * std_residual
-            # This mathematically prevents normal rooms (like WC or Technik) close to the trendline from being annotated!
-            outliers = above_trend[above_trend["residual"] > 1.2 * std_residual].sort_values("residual", ascending=False)
+        # Exclude WC and Technik completely from being annotated as outliers
+        candidates = []
+        for idx, row in df.iterrows():
+            room_name = str(row.get("name", "")).lower()
+            room_type = str(row.get("usage", "")).lower()
+            if "wc" in room_name or "wc" in room_type or "technik" in room_name or "technik" in room_type:
+                continue
+            candidates.append(row)
             
-            # Fallback if no point is statistically a strong outlier:
-            # We don't want to annotate normal points. But if there is a point that is extremely high in absolute CO2
-            # (e.g. > 400 kg), we can still annotate it.
-            if outliers.empty:
-                top_one = above_trend.sort_values("residual", ascending=False).head(1)
-                if not top_one.empty and top_one["residual"].iloc[0] > 100:
-                    outliers = top_one
-            else:
-                outliers = outliers.head(3) # Limit to top 3 actual outliers
-                
-            # Annotate these genuine outliers
-            for idx, row in outliers.iterrows():
+        if candidates:
+            cand_df = pd.DataFrame(candidates)
+            cand_df["y_pred"] = m * cand_df["area_m2"] + c
+            cand_df["residual"] = cand_df["co2_load"] - cand_df["y_pred"]
+            
+            annotated_ids = set()
+            to_annotate = []
+            
+            # 1. Always annotate Veloraum (the absolute primary outlier)
+            for idx, row in cand_df.iterrows():
+                r_name = str(row.get("name", "")).lower()
+                r_type = str(row.get("usage", "")).lower()
+                if "veloraum" in r_name or "veloraum" in r_type:
+                    to_annotate.append(row)
+                    annotated_ids.add(row.name)
+            
+            # 2. Always annotate Aufenthaltsräume > 100 m² (like the Saal ~160 m²)
+            for idx, row in cand_df.iterrows():
+                if row.name in annotated_ids:
+                    continue
+                r_name = str(row.get("name", "")).lower()
+                r_type = str(row.get("usage", "")).lower()
+                area = float(row.get("area_m2", 0))
+                # Check if it is a lounge room (Aufenthaltsraum)
+                is_aufenthalt = any(k in r_name or k in r_type for k in ["saal", "restaurant", "bar", "empfang", "warteraum", "backstage"])
+                if is_aufenthalt and area > 100:
+                    to_annotate.append(row)
+                    annotated_ids.add(row.name)
+            
+            # 3. Fallback: Add other highest residual positive outliers if we have less than 3 annotations
+            if len(to_annotate) < 3:
+                std_residual = df["residual"].std() if len(df) > 2 else 1.0
+                if pd.isna(std_residual) or std_residual <= 0:
+                    std_residual = 1.0
+                    
+                rem = cand_df[(cand_df["residual"] > 1.2 * std_residual) & (~cand_df.index.isin(annotated_ids))].sort_values("residual", ascending=False)
+                for idx, row in rem.iterrows():
+                    if len(to_annotate) >= 3:
+                        break
+                    to_annotate.append(row)
+                    annotated_ids.add(row.name)
+            
+            # Annotate all selected outliers
+            for row in to_annotate:
                 room_name = row.get("name") or "Raum"
                 room_type = row.get("usage") or ""
                 label_text = f"{room_name} ({room_type})" if room_type else room_name
@@ -451,7 +477,7 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                     arrowsize=1.0,
                     ax=60,   # offset slightly more to the right to avoid overlapping data points
                     ay=-40,  # offset slightly more upwards
-                    font=dict(size=13, color="#2D2D2D", family="Inter, sans-serif"), # Slightly larger font inside annotation
+                    font=dict(size=13, color="#2D2D2D", family="Inter, sans-serif"),
                     bgcolor="rgba(253, 237, 236, 0.95)",
                     bordercolor="#FADBD8",
                     borderwidth=1.5,

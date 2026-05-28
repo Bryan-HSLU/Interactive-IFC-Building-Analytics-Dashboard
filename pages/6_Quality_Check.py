@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
@@ -43,18 +44,41 @@ score = quality_summary.get("score", 0)
 error_counts = quality_summary.get("error_counts", {})
 total_elements = quality_summary.get("total_elements", 0)
 
-# ── 1. KPI-Card: Modellqualität (ersetzt Gauge-Chart) ───────────────────────
-col_kpi, col_traffic = st.columns([1, 2])
+# ── Donut-Chart Daten ─────────────────────────────────────────────
+INDICATOR_LABELS = {
+    "missing_material": "Ohne Material",
+    "missing_quantity": "Ohne Mengen",
+    "missing_usage":    "Räume ohne Nutzung",
+    "missing_storey":   "Ohne Geschoss",
+    "missing_status":   "Ohne Status",
+}
+# Blaue Abstufungen: dunkel → hell
+BLUE_SHADES = ["#1B3A6B", "#2E6BAD", "#4A9CC7", "#76C1E1", "#B0DFF0"]
+
+donut_labels, donut_values, donut_colors = [], [], []
+for i, (key, label) in enumerate(INDICATOR_LABELS.items()):
+    if key == "missing_status" and mode != "umbau":
+        continue
+    val = error_counts.get(key, 0)
+    if val > 0:
+        donut_labels.append(label)
+        donut_values.append(val)
+        donut_colors.append(BLUE_SHADES[i % len(BLUE_SHADES)])
+
+# Falls alles 0: kleinen Platzhalter "Kein Fehler"
+if not donut_values:
+    donut_labels = ["Kein Fehler"]
+    donut_values = [1]
+    donut_colors = ["#A8D5B5"]
+
+total_errors = sum(error_counts.values())
+
+# ── Layout: KPI-Card (links) | Donut-Chart (rechts) ────────────────────
+col_kpi, col_donut = st.columns([1, 2])
 
 with col_kpi:
     bar_width = max(0.0, min(float(score), 100.0))
-    # Farbe des Balkens je nach Score
-    if bar_width >= 80:
-        bar_color = "#2E86AB"
-    elif bar_width >= 50:
-        bar_color = "#F39C12"
-    else:
-        bar_color = "#D94F3D"
+    bar_color = "#2E86AB" if bar_width >= 80 else ("#F39C12" if bar_width >= 50 else "#D94F3D")
 
     st.markdown(
         f"""
@@ -65,24 +89,26 @@ with col_kpi:
             padding: 28px 24px 22px 24px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
             text-align: center;
-            min-height: 160px;
+            height: 340px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         ">
-            <div style="color: #888; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 6px;">
+            <div style="color: #888; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px;">
                 MODELLQUALITÄT
             </div>
-            <div style="font-size: 56px; font-weight: 800; color: #1A1A2E; line-height: 1.1; margin-bottom: 16px;">
-                {score:.1f}<span style="font-size: 28px; font-weight: 600; color: #888;">%</span>
+            <div style="font-size: 64px; font-weight: 800; color: #1A1A2E; line-height: 1.0; margin-bottom: 20px;">
+                {score:.1f}<span style="font-size: 30px; font-weight: 600; color: #888;">%</span>
             </div>
-            <div style="background: #F0F0F0; border-radius: 999px; height: 10px; width: 100%; overflow: hidden;">
+            <div style="background: #F0F0F0; border-radius: 999px; height: 12px; width: 100%; overflow: hidden;">
                 <div style="
                     background: {bar_color};
                     width: {bar_width}%;
                     height: 100%;
                     border-radius: 999px;
-                    transition: width 0.4s ease;
                 "></div>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
                 <span style="font-size: 11px; color: #AAA;">0%</span>
                 <span style="font-size: 11px; color: #AAA;">100%</span>
             </div>
@@ -91,47 +117,46 @@ with col_kpi:
         unsafe_allow_html=True,
     )
 
-# ── 2. Qualitätsindikatoren mit farbigen Badges ───────────────────────────
-with col_traffic:
+with col_donut:
     st.subheader("Qualitätsindikatoren")
-    st.caption("Zeigt wie viele Elemente wichtige Datenfelder nicht befüllt haben.")
+    st.caption("Verteilung der fehlenden Datenfelder nach Typ.")
 
-    def _traffic_light(count, label):
-        if count == 0:
-            badge_text  = "OK"
-            badge_bg    = "#A8D5B5"
-            badge_color = "#2D2D2D"
-            row_bg      = "#EAF6EE"
-        elif count <= 10:
-            badge_text  = "Warning"
-            badge_bg    = "#F5E642"
-            badge_color = "#2D2D2D"
-            row_bg      = "#FCF9D6"
-        else:
-            badge_text  = "Critical"
-            badge_bg    = "#D94F3D"
-            badge_color = "#FFFFFF"
-            row_bg      = "#FDEBD0"
+    fig_donut = go.Figure(go.Pie(
+        labels=donut_labels,
+        values=donut_values,
+        hole=0.55,
+        marker=dict(colors=donut_colors, line=dict(color="#FFFFFF", width=2)),
+        textinfo="label+value",
+        textfont=dict(size=13),
+        hovertemplate="<b>%{label}</b><br>%{value} Elemente<br>%{percent}<extra></extra>",
+        direction="clockwise",
+        sort=True,
+    ))
 
-        st.markdown(
-            f'<div style="background:{row_bg};border-radius:8px;padding:10px 14px;margin:5px 0;'
-            f'display:flex;align-items:center;gap:10px;">'
-            f'<span style="background:{badge_bg};color:{badge_color};font-size:11px;font-weight:700;'
-            f'padding:3px 9px;border-radius:999px;white-space:nowrap;">{badge_text}</span>'
-            f'<span style="color:#2D2D2D;flex:1;">{label}</span>'
-            f'<span style="font-weight:700;color:#1A1A2E;font-size:15px;">{count}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    # Annotation in der Mitte
+    center_text = "Kein Fehler" if total_errors == 0 else f"{total_errors}<br><span style='font-size:11px'>Probleme</span>"
+    fig_donut.add_annotation(
+        text=f"<b>{total_errors}</b><br>Probleme" if total_errors > 0 else "<b>✓</b><br>Kein Fehler",
+        x=0.5, y=0.5,
+        font=dict(size=16, color="#1A1A2E"),
+        showarrow=False,
+    )
 
-    _traffic_light(error_counts.get("missing_material", 0), "Elemente ohne Material")
-    _traffic_light(error_counts.get("missing_quantity", 0), "Elemente ohne Mengen")
-    _traffic_light(error_counts.get("missing_usage",    0), "Räume ohne Nutzung")
-    _traffic_light(error_counts.get("missing_storey",   0), "Elemente ohne Geschoss")
-    if mode == "umbau":
-        _traffic_light(error_counts.get("missing_status", 0), "Elemente ohne Status")
+    fig_donut.update_layout(
+        margin=dict(t=10, b=10, l=10, r=10),
+        height=300,
+        showlegend=True,
+        legend=dict(
+            orientation="v",
+            x=1.02, y=0.5,
+            font=dict(size=12),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
 
-    total_errors = sum(error_counts.values())
+    st.plotly_chart(fig_donut, use_container_width=True)
+
     if total_errors == 0:
         st.success(f"Modell vollständig – alle {total_elements:,} Elemente haben die Pflichtfelder befüllt.")
     else:
@@ -139,12 +164,9 @@ with col_traffic:
 
 st.divider()
 
-total_errors = sum(error_counts.values())
-
 if total_errors == 0:
     st.success("Keine Fehler gefunden – Ihr IFC-Modell ist vollständig!")
 else:
-    # ── Chart A: Fehlerbalken | Chart B: Pset-Heatmap ────────────────────────
     st.caption("Auf einen Balken klicken um die Fehlertabelle unten zu filtern. Nochmals klicken zum Zurücksetzen.")
     col_err, col_pset = st.columns(2)
 
@@ -194,12 +216,12 @@ if has_errors:
         table_df = table_df[table_df["error_type"] == cf_cat]
 
     display_df = table_df.rename(columns={
-        "element_id": "Element-ID",
-        "ifc_class":  "IFC-Klasse",
-        "storey":     "Geschoss",
-        "error_type": "Fehlertyp",
-        "severity":   "Schweregrad",
-        "description":"Beschreibung",
+        "element_id":  "Element-ID",
+        "ifc_class":   "IFC-Klasse",
+        "storey":      "Geschoss",
+        "error_type":  "Fehlertyp",
+        "severity":    "Schweregrad",
+        "description": "Beschreibung",
     })
 
     def _color_severity(val):

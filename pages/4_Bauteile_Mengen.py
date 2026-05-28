@@ -41,16 +41,16 @@ _u_volume = st.session_state.get("unit_volume", "m\u00b3")
 _u_mass   = st.session_state.get("unit_mass",   "kg")
 
 # Cross filter resets
-# Support cross-filtering by Room Usage (from Page 2 Treemap), Material and Class
 CF_KEYS = ["cf_page4_class", "cf_page4_material", "cf_page3_usage"]
 render_cross_filter_reset("page4", CF_KEYS)
+
+# ── Apply all cross-filters early so KPIs reflect the selection ───────────────
 
 cf_usage = st.session_state.get("cf_page3_usage")
 cf_class = st.session_state.get("cf_page4_class")
 cf_mat   = st.session_state.get("cf_page4_material")
 
 if cf_usage:
-    st.info(f"Aktivierter Filter (von Übersicht): Elemente gefiltert nach Räumen vom Typ **{cf_usage}**")
     if space_df_raw is not None and not space_df_raw.empty:
         valid_storeys = space_df_raw[space_df_raw["usage"] == cf_usage]["storey"].unique()
         if len(valid_storeys) > 0:
@@ -58,21 +58,34 @@ if cf_usage:
         else:
             element_df = pd.DataFrame()
 
-if element_df is None or element_df.empty:
+# Keep an unfiltered-by-material copy for the volume bar chart
+# (so user can always see & click ALL materials to toggle)
+element_df_all = element_df.copy()
+
+# Now apply material & class filter for KPIs, stacked bar, and table
+if cf_class and "ifc_class" in element_df.columns:
+    element_df = element_df[element_df["ifc_class"] == cf_class]
+if cf_mat and "material" in element_df.columns:
+    element_df = element_df[element_df["material"] == cf_mat]
+
+if element_df.empty:
     st.warning("Keine Elementdaten unter den aktiven Filtern verfügbar.")
     st.stop()
 
-def _apply_cf(df):
-    cf_c = st.session_state.get("cf_page4_class")
-    cf_m = st.session_state.get("cf_page4_material")
-    if cf_c and "ifc_class" in df.columns:
-        df = df[df["ifc_class"] == cf_c]
-    if cf_m and "material" in df.columns:
-        df = df[df["material"] == cf_m]
-    return df
+# Show active filter info
+active_parts = []
+if cf_usage:
+    active_parts.append(f"Raumtyp: **{cf_usage}**")
+if cf_class:
+    active_parts.append(f"Klasse: **{cf_class}**")
+if cf_mat:
+    active_parts.append(f"Material: **{cf_mat}**")
+if active_parts:
+    st.info("Aktiver Filter — " + " | ".join(active_parts) + "  (Button oben zum Zurücksetzen)")
 
-# -- KPI Cards -----------------------------------------------------------------
+# -- KPI Cards (reflect the active material filter!) --------------------------
 vol_sum = pd.to_numeric(element_df.get("volume_m3", pd.Series(dtype=float)), errors="coerce").sum(skipna=True)
+area_sum = pd.to_numeric(element_df.get("area_m2", pd.Series(dtype=float)), errors="coerce").sum(skipna=True)
 kpi = st.columns(4)
 kpi[0].metric("IFC-Klassen", f"{element_df['ifc_class'].nunique()}")
 kpi[1].metric("Bauelemente", f"{len(element_df):,}")
@@ -82,11 +95,12 @@ kpi[3].metric("Materialien", f"{element_df['material'].nunique()}" if "material"
 st.divider()
 
 # -- Chart A (Insight 3): "Welche Materialien sind verbaut – und wie viel?" ----
+# Always show ALL materials so the user can click to select/deselect
 
 st.subheader("Mengen nach Materialgruppe")
-st.caption("Einheitliche Akzentfarbe #2E86AB (Stahlblau). Absteigend nach Volumen sortiert. Klicken Sie auf einen Balken zum Filtern.")
+st.caption("Klicken Sie auf einen Balken, um nach diesem Material zu filtern. Erneut klicken zum Aufheben.")
 unit = st.session_state.get("unit_volume", "m³")
-fig_mat = create_material_volume_bar(element_df, unit)
+fig_mat = create_material_volume_bar(element_df_all, unit)
 fig_mat.update_layout(height=500)
 
 ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True)
@@ -124,7 +138,7 @@ st.divider()
 st.subheader("Element-Mengenliste")
 st.caption("Detaillierte Bauteilliste des Modells.")
 
-table_df = _apply_cf(element_df.copy())
+table_df = element_df.copy()
 search = st.text_input("Suche (Bauteil-Typ oder Material)", key="search_elements", placeholder="z.B. Beton, Wand...")
 if search:
     mask = pd.Series([False] * len(table_df))
@@ -153,3 +167,4 @@ display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
 _cap = unit_caption(_u_area, _u_volume, _u_mass)
 st.caption(f"{len(display_df):,} Elemente angezeigt" + (f" | {_cap}" if _cap else ""))
 st.dataframe(display_df, use_container_width=True, hide_index=True)
+

@@ -1,6 +1,6 @@
 # IFC Building Analytics Dashboard
 
-An interactive Streamlit dashboard for MEP planners and BIM coordinators to analyze IFC building models — supporting both new construction (Neubau) and renovation (Umbau/Sanierung) workflows.
+An interactive Streamlit dashboard for architects and BIM managers to analyze IFC building models — supporting both new construction (Neubau) and renovation (Umbau/Sanierung) workflows.
 
 > **Course project** — Data Visualization for AI and ML (I.BA_DVIZ_MM.F2601)  
 > HSLU · Spring 2026 · Dr. Teresa Kubacka
@@ -12,11 +12,11 @@ An interactive Streamlit dashboard for MEP planners and BIM coordinators to anal
 | Page | Description | Interactivity |
 |---|---|---|
 | **1 · Upload** | Load IFC file, select Neubau or Umbau mode, configure Psets | Mode toggle, Pset configurator |
-| **2 · Overview** | KPI cards, class distribution, CO₂ summary, treemap | Global sidebar filters |
-| **3 · Rooms & Areas** | Box plot, stacked bar, histogram, scatter by usage type | ✅ Cross-filtering between all charts |
-| **4 · Components & Quantities** | IFC class bar, storey breakdown, material analysis, raincloud | ✅ Cross-filtering between all charts |
-| **5 · Impact & Costs** | CO₂e, grey energy, cost (CHF), circularity (Umbau), SIA 2032 | ✅ Cross-filtering + SIA 2032 limit line |
-| **6 · Quality Check** | Score gauge, error analysis, UpSet plot, Pset matrix heatmap | ✅ Cross-filtering by error category |
+| **2 · Overview** | KPI cards, CO₂ summary, treemap, storey sunburst, status donut | Sunburst → Bubble Chart cross-filter, global sidebar filters |
+| **3 · Rooms & Areas** | ⚠️ Disabled — the project model contains no IfcSpace elements | — |
+| **4 · Components & Quantities** | IFC class bar, storey stacked bar, material analysis, violin / histogram / raincloud | ✅ Cross-filtering between class and material charts |
+| **5 · Impact & Costs** | CO₂e, grey energy, cost (CHF), circularity (Umbau only), SIA 2032 comparison | ✅ Cross-filtering CO₂ bar ↔ treemap |
+| **6 · Quality Check** | Score gauge, traffic-light indicators, UpSet plot, Pset matrix heatmap | ✅ Cross-filtering by error category and IFC class |
 
 ---
 
@@ -43,7 +43,9 @@ venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 ```
 
-> Requires **Python 3.10+**
+> Requires **Python 3.10 or higher**.
+
+> ⚠️ `ifcopenshell` ships platform-specific binaries. If `pip install` fails, download the correct wheel for your OS and Python version from [ifcopenshell.org/python](https://ifcopenshell.org/python).
 
 ### 4. Run the app
 
@@ -65,34 +67,35 @@ A sample IFC file is included in the `data/` folder for testing purposes.
 3. Select a project mode — **Neubau** (new construction) or **Umbau** (renovation)
 4. Navigate through all pages using the sidebar
 
-> The dashboard supports **IFC2x3** and **IFC4** files. IFC4x3 is not yet supported.
+> The dashboard supports **IFC2x3** and **IFC4** files.  
+> IFC4x3 is not currently supported.
 
 ---
 
 ## Project Structure
 
 ```
-├── app.py                    # Streamlit entry point
+├── app.py                    # Streamlit entry point & page config
 ├── pages/
-│   ├── 1_Upload.py
-│   ├── 2_Overview.py
-│   ├── 3_Raeume_Flaechen.py
-│   ├── 4_Bauteile_Mengen.py
-│   ├── 5_Impact_Costs.py
-│   └── 6_Quality_Check.py
+│   ├── 1_Upload.py           # IFC upload, mode selection, metadata display
+│   ├── 2_Overview.py         # KPI summary, sunburst, CO₂ treemap
+│   ├── 3_Raeume_Flaechen.py  # Disabled (no IfcSpace in project model)
+│   ├── 4_Bauteile_Mengen.py  # Element quantities & material analysis
+│   ├── 5_Impact_Costs.py     # CO₂e, grey energy, cost, circularity
+│   └── 6_Quality_Check.py    # Model quality score & error analysis
 ├── src/
 │   ├── chart_factory.py      # All Plotly chart functions
-│   ├── constants.py          # Colors, units, IFC labels
-│   ├── filters.py            # Sidebar + cross-filter UI
+│   ├── constants.py          # Colors, units, IFC class labels, KBOB path
+│   ├── filters.py            # Sidebar filters + cross-filter reset UI
 │   ├── ifc_parser.py         # ifcopenshell parsing logic
-│   ├── impact_calculator.py  # CO₂e, grey energy, cost (KBOB)
+│   ├── impact_calculator.py  # CO₂e, grey energy, cost (KBOB factors)
 │   ├── quality_checker.py    # Pset validation & error detection
 │   └── state_manager.py      # st.session_state management
 ├── data/
 │   ├── sample_building.ifc   # Sample IFC file for testing
-│   └── kbob_factors.csv      # KBOB emission & cost factors
+│   └── kbob_factors.csv      # KBOB emission & cost factors (Switzerland)
 └── assets/
-    └── style.css
+    └── style.css             # Custom CSS styling
 ```
 
 ---
@@ -101,19 +104,25 @@ A sample IFC file is included in the `data/` folder for testing purposes.
 
 This project applies the following principles from the course:
 
-- **Max 7 categories rule** — `_group_small_categories()` automatically groups small categories into "Sonstige" to avoid visual overload
-- **Accessibility colors** — No red/green color pairs; errors use orange (`#E67E22`) vs. blue (`#2980B9`) to be colorblind-safe
-- **Cross-filtering** — Clicking on any chart filters all other charts on the page via `streamlit-plotly-events`, going beyond standard hover interaction
-- **Intentional chart types** — Sankey diagram for material→class→CO₂ flow, Waterfall for cumulative contribution, UpSet plot for error co-occurrence, Raincloud for distribution + raw data combined
-- **Contextual annotations** — SIA 2032 reference line (11 kg CO₂e/m²·a) on impact charts gives direct normative context without requiring external lookup
-- **Consistent color encoding** — `Neubau=#2980B9`, `Abbruch=#E67E22`, `Bestand=#95A5A6`, `Temporär=#8E44AD` used consistently across all pages
+- **Max 7 categories rule** — `_group_small_categories()` automatically merges small categories into "Sonstige" to avoid visual overload
+- **Colorblind-safe palette** — No red/green pairs; status colors use teal (`#1A7F8E` Neubau), warm brown (`#A0522D` Abbruch), mid-grey (`#7F8C8D` Bestand) — consistently applied across all pages
+- **Cross-filtering beyond hover** — Clicking any chart filters all other charts on the same page via `streamlit-plotly-events`; clicking the same element again toggles the filter off
+- **Intentional chart types** — Sankey for material→class→CO₂ flow, Waterfall for cumulative contribution, UpSet plot for error co-occurrence patterns, Raincloud (violin + strip) for distribution + individual data points
+- **Contextual annotation** — SIA 2032 limit line (11 kg CO₂e/m²·a) provides normative reference directly in the chart without requiring external lookup
+- **Two project modes** — Neubau and Umbau/Sanierung propagated throughout the entire app; mode-specific charts (status donut, circularity tab, diverging bar) only rendered when relevant
 
 ---
 
 ## AI Tool Usage
 
 This project was developed with AI assistance in compliance with HSLU guidelines.  
-All prompts used are documented and submitted separately on ILIAS as required.
+All prompts used are documented and submitted separately as required.
+
+---
+
+## Live Demo
+
+🌐 [interactive-ifc-building-analytics-dashboard.streamlit.app](https://interactive-ifc-building-analytics-dashboard.streamlit.app)
 
 ---
 

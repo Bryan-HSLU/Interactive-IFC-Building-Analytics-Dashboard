@@ -6,6 +6,34 @@ import re
 import streamlit as st
 from src.constants import COLORS, STATUS_COLORS, ROOM_COLORS, MATERIAL_COLORS, CO2_SCALE
 
+# Semantic material groups with fixed colors (harmoneous shades of orange with Andere as gray)
+_MATERIAL_GROUP_RULES = [
+    # (list of substrings to match, group name)
+    (["beton", "concrete", "stahlbeton", "fundament", "ortbeton", "sichtbeton", "fertigteil"], "Beton"),
+    (["holz", "wood", "nadelholz", "laubholz", "fichte", "tanne", "buche", "eiche", "lärche"], "Holz"),
+    (["stahl", "steel", "eisen", "metall", "metal", "aluminium", "alu", "kupfer", "zink", "blech", "träger"], "Metall"),
+    (["dämmung", "dämm", "isolation", "mineralwolle", "steinwolle", "glaswolle", "eps", "pur", "pir", "styropor", "wärmedämm"], "Dämmung"),
+    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg"], "Glas"),
+]
+
+_MATERIAL_GROUP_COLORS = {
+    "Holz":    "#D35400",  # Warmes Rost-Orange (Dunkel)
+    "Beton":   "#E67E22",  # Leuchtendes Orange
+    "Metall":  "#F39C12",  # Edles Amber-Orange
+    "Dämmung": "#F5B041",  # Weiches Sonnen-Orange
+    "Glas":    "#F8C471",  # Helles Pfirsich-Orange
+    "Andere":  "#BDC3C7",  # Neutrales Hellgrau
+}
+
+def _classify_material_group(material_name: str) -> str:
+    """Classify a raw material name into one of 6 semantic groups."""
+    name = str(material_name).lower().strip()
+    for triggers, group in _MATERIAL_GROUP_RULES:
+        for t in triggers:
+            if t in name:
+                return group
+    return "Andere"
+
 
 def apply_default_layout(fig: go.Figure, title: str = None) -> go.Figure:
     fig.update_layout(
@@ -152,38 +180,14 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
     if df.empty:
         return _empty_fig("Keine Mengendaten verfügbar")
 
-    # Grouping rules:
-    # - all materials with "holz" or "dachbekleidung" in their name mapped to "Holz"
-    # - all materials with "allgemein" or "unbekannt" mapped to "Allgemein"
-    # - others kept as-is
-    def _group_material_name(name: str) -> str:
-        name_lower = str(name).lower().strip()
-        if "holz" in name_lower or "dachbekleidung" in name_lower:
-            return "Holz"
-        elif "allgemein" in name_lower or "unbekannt" in name_lower:
-            return "Allgemein"
-        else:
-            return str(name).strip()
-
-    df["grouped_material"] = df["material"].apply(_group_material_name)
+    # Classify raw materials into standard semantic groups
+    df["grouped_material"] = df["material"].apply(_classify_material_group)
 
     # Aggregate by grouped material
     agg = df.groupby("grouped_material")[col].sum().reset_index()
     agg.columns = ["material", "quantity"]
 
     total_volume = agg["quantity"].sum()
-    agg = agg.sort_values("quantity", ascending=False)
-
-    # Keep top 5 materials, rest goes to Andere
-    if len(agg) > 5:
-        top_5 = agg.head(5)
-        rest = agg.iloc[5:]
-        rest_val = rest["quantity"].sum()
-        if rest_val > 0:
-            rest_row = pd.DataFrame([{"material": "Andere", "quantity": rest_val}])
-            agg = pd.concat([top_5, rest_row], ignore_index=True)
-        else:
-            agg = top_5
 
     # Separate "Andere" to place it at the very bottom of the horizontal bar chart
     is_andere = agg["material"] == "Andere"
@@ -195,11 +199,8 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
     else:
         agg = main_rows
 
-    # Use single accent color #2E86AB (Stahlblau)
-    colors = [COLORS["primary"]] * len(agg)
-    if "Andere" in agg["material"].values:
-        andere_idx = agg[agg["material"] == "Andere"].index[0]
-        colors[andere_idx] = "#BDC3C7" # Light gray for Andere
+    # Resolve premium colors dynamically for each bar from our global palette (same as stacked bar below!)
+    colors = [_MATERIAL_GROUP_COLORS.get(m, "#BDC3C7") for m in agg["material"]]
 
     fig = go.Figure(go.Bar(
         x=agg["quantity"],
@@ -537,34 +538,6 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
 
 
 # ── 6️⃣ Stacked Bar Chart 100%: "Bauteil-Material-Verteilung" ──────────────────
-
-# Semantic material groups with fixed colors
-_MATERIAL_GROUP_RULES = [
-    # (list of substrings to match, group name)
-    (["beton", "concrete", "stahlbeton", "fundament", "ortbeton", "sichtbeton", "fertigteil"], "Beton"),
-    (["holz", "wood", "nadelholz", "laubholz", "fichte", "tanne", "buche", "eiche", "lärche"], "Holz"),
-    (["stahl", "steel", "eisen", "metall", "metal", "aluminium", "alu", "kupfer", "zink", "blech", "träger"], "Metall"),
-    (["dämmung", "dämm", "isolation", "mineralwolle", "steinwolle", "glaswolle", "eps", "pur", "pir", "styropor", "wärmedämm"], "Dämmung"),
-    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg"], "Glas"),
-]
-
-_MATERIAL_GROUP_COLORS = {
-    "Beton":   "#909497",  # Grau
-    "Holz":    "#8E6F54",  # Braun
-    "Metall":  "#616A6B",  # Blaugrau/Slate
-    "Dämmung": "#F4D03F",  # Gelb
-    "Glas":    "#A9CCE3",  # Hellblau
-    "Andere":  "#BDC3C7",  # Hellgrau
-}
-
-def _classify_material_group(material_name: str) -> str:
-    """Classify a raw material name into one of 6 semantic groups."""
-    name = str(material_name).lower().strip()
-    for triggers, group in _MATERIAL_GROUP_RULES:
-        for t in triggers:
-            if t in name:
-                return group
-    return "Andere"
 
 
 def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:

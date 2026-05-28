@@ -144,7 +144,7 @@ st.divider()
 
 # ── Pset-Heatmap ──────────────────────────────────────────────────────────────
 st.subheader("Pset-Verfügbarkeit nach IFC-Klasse")
-st.caption("Blau = vorhanden, Grau = fehlend.")
+st.caption("🔵 Blau = vorhanden  🟠 Orange = fehlend")
 if element_df is not None and not element_df.empty:
     pset_matrix = build_pset_matrix(element_df)
     if pset_matrix is not None and not pset_matrix.empty:

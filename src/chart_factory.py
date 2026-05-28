@@ -224,7 +224,7 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
             text=f"macht {pct:.1f}% des Gesamtvolumens aus",
             showarrow=False, # Removed arrow
             xanchor="left",  # Align callout text to the left
-            xshift=10,       # Shift it slightly to the right of the bar end
+            xshift=65,       # Shift it to the right of the quantity value (e.g. 331.0) printed outside the bar
             font=dict(size=11, color="#2D2D2D", family="Inter, sans-serif"),
             bgcolor="#FDEDEC",
             bordercolor="#FADBD8",

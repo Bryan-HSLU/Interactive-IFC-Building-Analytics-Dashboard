@@ -467,6 +467,23 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                 room_type = row.get("usage") or ""
                 label_text = f"{room_name} ({room_type})" if room_type else room_name
                 
+                # Dynamic offsets to prevent labels from overlapping other data points!
+                ax_offset = 60
+                ay_offset = -40
+                
+                r_name_lower = str(room_name).lower()
+                r_type_lower = str(room_type).lower()
+                
+                if "bar" in r_name_lower or "empfang" in r_name_lower or "bar" in r_type_lower or "empfang" in r_type_lower:
+                    ax_offset = -40  # offset to the left
+                    ay_offset = 45   # offset downwards (under the circle!) to avoid covering the Veloraum point
+                elif "saal" in r_name_lower or "saal" in r_type_lower:
+                    ax_offset = -60  # offset to the left
+                    ay_offset = -40  # offset upwards
+                elif "veloraum" in r_name_lower or "veloraum" in r_type_lower:
+                    ax_offset = 60   # offset to the right
+                    ay_offset = -45  # offset upwards
+                
                 fig.add_annotation(
                     x=row["area_m2"],
                     y=row["co2_load"],
@@ -475,8 +492,8 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                     arrowhead=2,
                     arrowcolor="#D94F3D",
                     arrowsize=1.0,
-                    ax=60,   # offset slightly more to the right to avoid overlapping data points
-                    ay=-40,  # offset slightly more upwards
+                    ax=ax_offset,
+                    ay=ay_offset,
                     font=dict(size=13, color="#2D2D2D", family="Inter, sans-serif"),
                     bgcolor="rgba(253, 237, 236, 0.95)",
                     bordercolor="#FADBD8",

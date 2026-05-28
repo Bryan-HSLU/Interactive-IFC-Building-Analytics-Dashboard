@@ -300,53 +300,50 @@ def _classify_material_group(material_name: str) -> str:
 
 
 def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
-    if element_df.empty or "ifc_class" not in element_df.columns or "material" not in element_df.columns:
-        return _empty_fig("Keine Elementdaten für Bauteilverteilung verfügbar")
-
-    df = element_df.copy()
-
-    # Map IFC classes to standard German building parts (Wand, Boden, Decke)
-    # Fenster and Tür are completely omitted from this stacked bar chart.
-    def _map_class_to_part(cls):
-        if cls in ("IfcWall", "IfcWallStandardCase", "IfcCurtainWall"):
-            return "Wand"
-        elif cls == "IfcRoof":
-            return "Decke"
-        elif cls == "IfcSlab":
-            return "Boden"
-        else:
-            return "Sonstige"
-
-    df["part"] = df["ifc_class"].apply(_map_class_to_part)
-    df = df[df["part"] != "Sonstige"]
-
-    if df.empty:
-        return _empty_fig("Keine Wände, Böden oder Decken vorhanden")
-
-    # Classify raw materials into semantic groups
-    df["mat_group"] = df["material"].apply(_classify_material_group)
-
-    # Group and calculate percentages
-    pivot = df.pivot_table(index="part", columns="mat_group", aggfunc="size", fill_value=0)
-    if pivot.empty:
-        return _empty_fig("Keine Zuordnung möglich")
-
-    # Drop building parts (rows) with zero total elements
-    pivot = pivot.loc[pivot.sum(axis=1) > 0]
-    if pivot.empty:
-        return _empty_fig("Keine Bauteilgruppen mit Daten")
-
-    # Normalize to 100%
-    pivot_pct = pivot.div(pivot.sum(axis=1), axis=0) * 100
-
-    # Consistent order of parts on X-Axis, only those with data (Wand, Boden, Decke)
+    # Define standard categories and groups
     part_order = ["Wand", "Boden", "Decke"]
-    pivot_pct = pivot_pct.reindex([p for p in part_order if p in pivot_pct.index])
-
-    # Ensure all 6 material groups are ALWAYS present in the legend in the exact same order,
-    # even when a single material is selected and other groups have 0%.
     group_order = ["Beton", "Holz", "Metall", "Dämmung", "Glas", "Andere"]
-    pivot_pct = pivot_pct.reindex(columns=group_order, fill_value=0.0)
+
+    if element_df.empty or "ifc_class" not in element_df.columns or "material" not in element_df.columns:
+        # Return an empty-looking dataframe with correct static layout
+        pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
+    else:
+        df = element_df.copy()
+
+        # Map IFC classes to standard German building parts (Wand, Boden, Decke)
+        # Fenster and Tür are completely omitted from this stacked bar chart.
+        def _map_class_to_part(cls):
+            if cls in ("IfcWall", "IfcWallStandardCase", "IfcCurtainWall"):
+                return "Wand"
+            elif cls == "IfcRoof":
+                return "Decke"
+            elif cls == "IfcSlab":
+                return "Boden"
+            else:
+                return "Sonstige"
+
+        df["part"] = df["ifc_class"].apply(_map_class_to_part)
+        df = df[df["part"] != "Sonstige"]
+
+        if df.empty:
+            pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
+        else:
+            # Classify raw materials into semantic groups
+            df["mat_group"] = df["material"].apply(_classify_material_group)
+
+            # Group and calculate percentages
+            pivot = df.pivot_table(index="part", columns="mat_group", aggfunc="size", fill_value=0)
+            
+            # Reindex to ensure Wand, Boden, Decke are ALWAYS present on the X-axis
+            # and all 6 material groups are ALWAYS present in the legend in the exact same order
+            pivot = pivot.reindex(index=part_order, columns=group_order, fill_value=0)
+            
+            # Normalize to 100%
+            row_sums = pivot.sum(axis=1)
+            # Avoid division by zero
+            pivot_pct = pivot.div(row_sums.replace(0, 1), axis=0) * 100
+            # If a row had 0 total elements, keep its percentage at 0
+            pivot_pct.loc[row_sums == 0] = 0.0
 
     fig = go.Figure()
     for grp in group_order:
@@ -360,7 +357,8 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
         ))
 
     fig.update_layout(barmode="stack")
-    apply_default_layout(fig, "Materialverteilung nach Bauteilgruppe")
+    # Apply default layout WITHOUT title as Streamlit already has a subheader above it
+    apply_default_layout(fig, None)
     fig.update_layout(
         xaxis_title="", yaxis_title="Materialanteil (%)",
         legend=dict(

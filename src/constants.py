@@ -1,36 +1,36 @@
 COLORS = {
-    "neubau": "#2980B9",    # Blue — construction/future
-    "abbruch": "#E67E22",   # Orange — demolition/warning
-    "bestand": "#95A5A6",   # Gray — existing/unchanged
-    "temporaer": "#8E44AD", # Purple — temporary/special
-    "primary": "#2980B9",
+    "neubau": "#1A7F8E",     # Petrol/Teal — neu, frisch, konstruktiv
+    "abbruch": "#A0522D",    # Warm-Braun — erdig, "wegräumen", kein Rot/Orange
+    "bestand": "#7F8C8D",    # Mittelgrau — neutral, "schon da"
+    "temporaer": "#7D3C98",  # Violett — besonders, selten
+    "primary": "#34495E",    # Schiefer-Blau — dunkel, seriös
     "neutral": "#BDC3C7",
     "unknown": "#95A5A6",
-    "error_ok": "#2980B9",       # Blue — no issues
-    "error_warning": "#E67E22",  # Orange — minor issues (warm, attention)
-    "error_critical": "#A04000", # Dark orange-brown — critical issues (same hue family, darker = more severe)
+    "error_ok": "#1A7F8E",       # Petrol — kein Problem (konsistent mit Neubau)
+    "error_warning": "#D4A017",  # Amber — Aufmerksamkeit, kein Orange
+    "error_critical": "#7B3F00", # Dunkelbraun — ernst, schwer, kein Rot
     "text": "#2C3E50",
     "text_light": "#7F8C8D",
     "grid": "#ECF0F1",
 }
 
 STATUS_COLORS = {
-    "Neubau": "#2980B9",        # Blue
-    "Abbruch": "#E67E22",       # Orange
-    "Bestand": "#95A5A6",       # Gray
-    "Temporär": "#8E44AD",      # Purple
+    "Neubau": "#1A7F8E",         # Petrol
+    "Abbruch": "#A0522D",        # Warm-Braun
+    "Bestand": "#7F8C8D",        # Grau
+    "Temporär": "#7D3C98",       # Violett
     "Nicht gefunden": "#BDC3C7",
 }
 
 # Max 7 distinct categories (cognitive load principle)
 CATEGORICAL_COLORS = [
-    "#5DADE2",  # Light blue (distinct from primary #2980B9)
-    "#E67E22",  # Orange
-    "#A569BD",  # Purple
-    "#1ABC9C",  # Teal
-    "#F4D03F",  # Yellow
-    "#EC407A",  # Pink
-    "#95A5A6",  # Gray (Sonstige/Unbekannt)
+    "#1A7F8E",  # Petrol (Hauptfarbe)
+    "#A0522D",  # Warm-Braun
+    "#7D3C98",  # Violett
+    "#D4A017",  # Amber
+    "#2E86AB",  # Stahlblau (distinct von Petrol)
+    "#6C8EBF",  # Blaugrau
+    "#95A5A6",  # Grau (Sonstige/Unbekannt)
 ]
 
 CHART_DEFAULTS = {

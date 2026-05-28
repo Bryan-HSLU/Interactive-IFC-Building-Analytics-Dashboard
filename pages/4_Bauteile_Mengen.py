@@ -82,29 +82,42 @@ kpi[3].metric("Materialien", f"{element_df['material'].nunique()}" if "material"
 st.divider()
 
 # -- Chart A (Insight 3): "Welche Materialien sind verbaut – und wie viel?" ----
+
+st.subheader("Mengen nach Materialgruppe")
+st.caption("Einheitliche Akzentfarbe #2E86AB (Stahlblau). Absteigend nach Volumen sortiert. Klicken Sie auf einen Balken zum Filtern.")
+unit = st.session_state.get("unit_volume", "m³")
+fig_mat = create_material_volume_bar(element_df, unit)
+fig_mat.update_layout(height=500)
+
+ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True)
+if ev_mat and ev_mat.selection.points:
+    pt = ev_mat.selection.points[0]
+    clicked = pt.get("y") or pt.get("label") or ""
+    if clicked:
+        prev = st.session_state.get("cf_page4_material")
+        st.session_state.cf_page4_material = None if clicked == prev else clicked
+        st.rerun()
+
+st.divider()
+
 # -- Chart B (Insight 6): "Wie verteilen sich Materialien auf Wand, Boden, Decke?"
-col_left, col_right = st.columns(2)
 
-with col_left:
-    st.subheader("Mengen nach Materialgruppe")
-    st.caption("Einheitliche Akzentfarbe #2E86AB (Stahlblau). Absteigend nach Volumen sortiert. Klicken Sie auf einen Balken zum Filtern.")
-    unit = st.session_state.get("unit_volume", "m³")
-    fig_mat = create_material_volume_bar(element_df, unit)
-    
-    ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True)
-    if ev_mat and ev_mat.selection.points:
-        pt = ev_mat.selection.points[0]
-        clicked = pt.get("y") or pt.get("label") or ""
-        if clicked:
-            prev = st.session_state.get("cf_page4_material")
-            st.session_state.cf_page4_material = None if clicked == prev else clicked
-            st.rerun()
-
-with col_right:
-    st.subheader("Materialanteil pro Bauteilgruppe")
-    st.caption("100% Stacked Bar Chart zur vergleichenden Zusammensetzung (Decke, Boden, Wand, Fenster, Tür).")
-    fig_stacked = create_element_material_stacked_bar(element_df)
-    st.plotly_chart(fig_stacked, use_container_width=True, key="p4_stacked_bar")
+st.subheader("Materialanteil pro Bauteilgruppe")
+st.caption("100% Stacked Bar Chart zur vergleichenden Zusammensetzung (Decke, Boden, Wand, Fenster, Tür).")
+fig_stacked = create_element_material_stacked_bar(element_df)
+fig_stacked.update_layout(
+    height=500,
+    legend=dict(
+        orientation="h",
+        yanchor="top",
+        y=-0.15,
+        xanchor="center",
+        x=0.5,
+        font=dict(size=11),
+    ),
+    margin=dict(l=50, r=20, t=50, b=100),
+)
+st.plotly_chart(fig_stacked, use_container_width=True, key="p4_stacked_bar")
 
 # -- Quantity Takeoff Table ----------------------------------------------------
 st.divider()

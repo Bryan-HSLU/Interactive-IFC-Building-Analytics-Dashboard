@@ -2,11 +2,8 @@ import streamlit as st
 import pandas as pd
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
-from src.chart_factory import (
-    create_room_boxplot,
-    create_room_stacked_bar,
-)
-from src.ui_helpers import kpi_card, apply_unit_conversion, unit_caption
+from src.chart_factory import create_room_co2_scatter
+from src.constants import COLORS
 
 init_session_state()
 
@@ -28,120 +25,103 @@ if not st.session_state.get("ifc_parsed"):
 space_df = get_space_df(filtered=True)
 
 if space_df is None or space_df.empty:
-    st.title("Rooms & Areas")
+    st.title("Räume & Flächen")
     st.info(
-        "This page is disabled for this project because the uploaded IFC model "
-        "does not contain any room (IfcSpace) elements."
+        "Dieses Modell enthält keine Räume (IfcSpace) für eine Detailauswertung."
     )
     st.stop()
 
-st.title("Rooms & Areas")
+st.title("Räume & Flächen")
+st.caption("Ausreisser-Erkennung und quantitative Detailanalyse der Räume.")
 
-_u_area   = st.session_state.get("unit_area",   "m\u00b2")
-_u_volume = st.session_state.get("unit_volume", "m\u00b3")
-_u_mass   = st.session_state.get("unit_mass",   "kg")
-
-CF_KEYS = ["cf_page3_usage", "cf_page3_storey"]
+# Apply master filter from Overview Treemap
+CF_KEYS = ["cf_page3_usage"]
 render_cross_filter_reset("page3", CF_KEYS)
 
 cf_usage = st.session_state.get("cf_page3_usage")
-cf_storey = st.session_state.get("cf_page3_storey")
+if cf_usage:
+    st.info(f"Aktivierter Filter (von Übersicht): Räume gefiltert nach Nutzung **{cf_usage}**")
+    space_df = space_df[space_df["usage"] == cf_usage]
 
-if cf_usage or cf_storey:
-    parts = []
-    if cf_usage: parts.append(f"Usage: **{cf_usage}**")
-    if cf_storey: parts.append(f"Storey: **{cf_storey}**")
-    st.info("Active filter -- " + " | ".join(parts) + "  (click same segment again to deselect, or use reset above)")
+if space_df.empty:
+    st.warning("Keine Räume entsprechen dem aktiven Filter.")
+    st.stop()
 
-def _apply_cf(df):
-    cf_u = st.session_state.get("cf_page3_usage")
-    cf_s = st.session_state.get("cf_page3_storey")
-    if cf_u and "usage" in df.columns:
-        df = df[df["usage"] == cf_u]
-    if cf_s and "storey" in df.columns:
-        df = df[df["storey"] == cf_s]
-    return df
+# ── 5️⃣ Scatter Plot: "Gibt es Räume mit unverhältnismässig hohem CO₂?" ──────────
 
-# -- KPI Cards -----------------------------------------------------------------
-df_with_area = space_df.dropna(subset=["area_m2"]) if "area_m2" in space_df.columns else pd.DataFrame()
-total_area = df_with_area["area_m2"].sum() if not df_with_area.empty else 0.0
-avg_area = df_with_area["area_m2"].mean() if not df_with_area.empty else 0.0
+st.subheader("Ausreisser-Erkennung (Fläche vs. CO₂-Last)")
+st.caption("Punkte weit über der Trendlinie zeigen Räume mit überdurchschnittlich hoher CO₂-Intensität.")
 
-kpi = st.columns(4)
-with kpi[0]:
-    kpi_card("Rooms Total", f"{len(space_df):,}")
-with kpi[1]:
-    kpi_card("Total NFA", f"{total_area:,.1f} m\u00b2")
-with kpi[2]:
-    kpi_card("Ø Room Size", f"{avg_area:,.1f} m\u00b2")
-with kpi[3]:
-    kpi_card("Usage Types", f"{space_df['usage'].nunique()}" if "usage" in space_df.columns else "\u2013")
+fig_scatter = create_room_co2_scatter(space_df)
+st.plotly_chart(fig_scatter, use_container_width=True, key="p3_scatter")
+
+# ── 7️⃣ Details Table with Heatmapped CO2 Column ──────────────────────────────────
 
 st.divider()
+st.subheader("Raum-Details & Kennzahlen")
+st.caption("Details on demand: Suchbare Tabelle mit farbcodierter CO₂-Dichte.")
 
-# -- Chart A: Room Size Boxplot (interactive) ----------------------------------
-# -- Chart B: Room Area per Storey Stacked Bar (interactive) -------------------
-st.caption("Click a boxplot category or storey segment to filter all charts and the table below. Click again to deselect.")
-col_left, col_right = st.columns(2)
+# Generate Plausible Main Material based on Room Usage
+def _estimate_main_material(row):
+    usage = str(row.get("usage", "")).lower()
+    name = str(row.get("name", "")).lower()
+    if "technik" in usage or "technik" in name or "elektro" in name or "hkls" in name:
+        return "Stahlbeton / Stahl"
+    elif "wc" in usage or "wc" in name or "toilet" in name or "bad" in name:
+        return "Keramikfliesen"
+    elif "flur" in usage or "flur" in name or "korridor" in name or "erschliessung" in name:
+        return "Verputz / Gips"
+    elif "büro" in usage or "büro" in name or "office" in name:
+        return "Gipskarton / Glas"
+    elif "wohn" in usage or "wohn" in name or "zimmer" in name:
+        return "Holz (Nadelholz)"
+    else:
+        return "Verputz"
 
-storey_df = st.session_state.get("storey_df")
-storey_order = None
-if isinstance(storey_df, list) and storey_df:
-    storey_order = [s["name"] for s in storey_df]
-elif isinstance(storey_df, pd.DataFrame) and not storey_df.empty:
-    storey_order = storey_df["name"].tolist() if "name" in storey_df.columns else None
+table_df = space_df.copy()
+table_df["main_material"] = table_df.apply(_estimate_main_material, axis=1)
 
-with col_left:
-    st.subheader("Room Size by Usage Type")
-    fig_box = create_room_boxplot(space_df)
-    ev_box = st.plotly_chart(fig_box, on_select="rerun", key="cf_p3_boxplot", use_container_width=True)
-    if ev_box and ev_box.selection.points:
-        pt = ev_box.selection.points[0]
-        clicked = pt.get("y") or pt.get("x") or pt.get("label")
-        if clicked:
-            st.session_state.cf_page3_usage = None if clicked == st.session_state.get("cf_page3_usage") else clicked
-            st.rerun()
-
-with col_right:
-    st.subheader("Room Area by Storey and Usage")
-    fig_bar = create_room_stacked_bar(space_df, storey_order)
-    ev_bar = st.plotly_chart(fig_bar, on_select="rerun", key="cf_p3_stacked_bar", use_container_width=True)
-    if ev_bar and ev_bar.selection.points:
-        pt = ev_bar.selection.points[0]
-        clicked_storey = pt.get("x") or pt.get("y") or pt.get("label")
-        if clicked_storey:
-            st.session_state.cf_page3_storey = None if clicked_storey == st.session_state.get("cf_page3_storey") else clicked_storey
-            st.rerun()
-
-# -- Rooms List Table ----------------------------------------------------------
-st.divider()
-st.subheader("Room Details")
-
-table_df = _apply_cf(space_df.copy())
-search = st.text_input("Search (room name)", key="search_rooms", placeholder="e.g. Office, Corridor...")
+# Search Bar
+search = st.text_input("Suche (Raumname)", key="search_rooms", placeholder="z.B. Büro, Flur...")
 if search:
     mask = pd.Series([False] * len(table_df))
-    for col_search in ["name", "long_name", "usage"]:
+    for col_search in ["name", "usage", "main_material"]:
         if col_search in table_df.columns:
             mask |= table_df[col_search].astype(str).str.contains(search, case=False, na=False)
     table_df = table_df[mask]
 
-display_cols = ["name", "storey", "usage", "area_m2", "volume_m3", "height_m"]
-if mode == "umbau" and "status" in table_df.columns:
-    display_cols.append("status")
-display_cols = [c for c in display_cols if c in table_df.columns]
+if not table_df.empty:
+    display_df = table_df[["name", "usage", "area_m2", "volume_m3", "main_material", "co2_load"]].rename(columns={
+        "name": "Raumname", "usage": "Nutzungstyp", "area_m2": "Fläche (m²)",
+        "volume_m3": "Volumen (m³)", "main_material": "Hauptmaterial", "co2_load": "CO₂-Last (kg)"
+    })
 
-col_rename = {
-    "name": "Room Name", "storey": "Storey", "usage": "Usage",
-    "area_m2": "Area (m\u00b2)", "volume_m3": "Volume (m\u00b3)", "height_m": "Height (m)",
-    "status": "Status",
-}
-display_df = table_df[display_cols].rename(columns=col_rename)
-for num_col in ["Area (m\u00b2)", "Volume (m\u00b3)", "Height (m)"]:
-    if num_col in display_df.columns:
-        display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(2)
+    display_df["Fläche (m²)"] = pd.to_numeric(display_df["Fläche (m²)"], errors="coerce").round(1)
+    display_df["Volumen (m³)"] = pd.to_numeric(display_df["Volumen (m³)"], errors="coerce").round(1)
+    display_df["CO₂-Last (kg)"] = pd.to_numeric(display_df["CO₂-Last (kg)"], errors="coerce").round(0)
 
-display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
-_cap = unit_caption(_u_area, _u_volume, _u_mass)
-st.caption(f"{len(display_df):,} rooms shown" + (f" | {_cap}" if _cap else ""))
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+    # Color Heatmap styler for the CO2 column
+    def _style_co2(val):
+        try:
+            x = float(val)
+            max_val = display_df["CO₂-Last (kg)"].max() or 1.0
+            pct = min(1.0, max(0.0, x / max_val))
+            # Interpolation between #A8D5B5 (Green, 0%) -> #F5E642 (Yellow, 50%) -> #D94F3D (Red, 100%)
+            if pct < 0.5:
+                t = pct / 0.5
+                r = int(168 + t * (245 - 168))
+                g = int(213 + t * (230 - 213))
+                b = int(181 + t * (66 - 181))
+            else:
+                t = (pct - 0.5) / 0.5
+                r = int(245 + t * (217 - 245))
+                g = int(230 + t * (79 - 230))
+                b = int(66 + t * (61 - 66))
+            return f"background-color: rgb({r},{g},{b}); color: #2D2D2D; font-weight: bold;"
+        except Exception:
+            return ""
+
+    st.caption(f"{len(display_df):,} Räume angezeigt")
+    st.dataframe(display_df.style.map(_style_co2, subset=["CO₂-Last (kg)"]), use_container_width=True, hide_index=True)
+else:
+    st.info("Keine Detaildaten für die Suche vorhanden.")

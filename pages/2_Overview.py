@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
-from src.state_manager import init_session_state, get_element_df, get_space_df
-from src.filters import render_sidebar, render_cross_filter_reset
-from src.chart_factory import create_room_stacked_bar, create_co2_treemap
+from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
+from src.filters import render_sidebar
+from src.chart_factory import create_room_treemap
+from src.constants import COLORS
 
 init_session_state()
 
@@ -13,8 +14,8 @@ except FileNotFoundError:
     pass
 
 element_df_raw = get_element_df(filtered=False)
-space_df_raw   = get_space_df(filtered=False)
-mode           = st.session_state.get("mode_project", "")
+space_df_raw = get_space_df(filtered=False)
+mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
@@ -22,87 +23,62 @@ if not st.session_state.get("ifc_parsed"):
     st.stop()
 
 element_df = get_element_df(filtered=True)
-space_df   = get_space_df(filtered=True)
+space_df = get_space_df(filtered=True)
+has_spaces = space_df is not None and not space_df.empty
 
-st.title("Overview")
-st.caption("Gesamtübersicht des Gebäudemodells — Overview first, dann Details.")
+st.title("Gebäude-Übersicht")
+st.caption("Schneller Überblick und räumliche NFA-Verteilung des Gebäudes.")
 
-CF_KEYS = ["cf_page2_storey", "cf_page2_material"]
-render_cross_filter_reset("page2", CF_KEYS)
+# ── 1️⃣ KPI Cards: "Wie gross ist das Gebäude insgesamt – und was enthält es?" ──
 
-# ── 1. KPI-Karten (Overview first — Shneiderman's Mantra) ─────────────────────
-st.subheader("Kennzahlen")
+total_area = space_df["area_m2"].sum() if has_spaces and "area_m2" in space_df.columns else 0.0
+room_count = len(space_df) if has_spaces else 0
+window_count = int((element_df["ifc_class"].isin(["IfcWindow", "IfcCurtainWall"])).sum()) if element_df is not None else 0
+door_count = int((element_df["ifc_class"] == "IfcDoor").sum()) if element_df is not None else 0
+total_co2 = pd.to_numeric(element_df["co2e_total"], errors="coerce").sum() if element_df is not None and "co2e_total" in element_df.columns else 0.0
 
-total_elements = len(element_df) if element_df is not None and not element_df.empty else 0
-total_spaces   = len(space_df)   if space_df   is not None and not space_df.empty   else 0
-
-n_doors   = 0
-n_windows = 0
-n_open    = 0
-if element_df is not None and not element_df.empty and "ifc_class" in element_df.columns:
-    n_doors   = int((element_df["ifc_class"].str.contains("Door",   case=False, na=False)).sum())
-    n_windows = int((element_df["ifc_class"].str.contains("Window", case=False, na=False)).sum())
-    n_open    = n_doors + n_windows
-
-total_co2 = 0.0
-if element_df is not None and not element_df.empty and "co2e_total" in element_df.columns:
-    total_co2 = pd.to_numeric(element_df["co2e_total"], errors="coerce").sum()
-
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("Elemente total",   f"{total_elements:,}")
-col2.metric("Räume / Zonen",    f"{total_spaces:,}")
-col3.metric("Türen",            f"{n_doors:,}")
-col4.metric("Fenster",          f"{n_windows:,}")
-col5.metric("Total Öffnungen",  f"{n_open:,}")
-
-if total_co2 > 0:
-    st.metric("Graue Energie (CO₂e total)", f"{total_co2:,.0f} kg")
-
-st.divider()
-
-# ── 2. Zoom & Filter: Stacked Bar (Räume nach Geschoss × Nutzung) ─────────────
-# Analytische Frage: "Wie verteilt sich die Raumfläche über Geschosse und Nutzungstypen?"
-# → Stacked Bar: Teil-Ganzes über Kategorien, Längen direkt vergleichbar
-
-st.subheader("Raumfläche nach Geschoss und Nutzung")
-st.caption("Klick auf ein Geschoss filtert die gesamte Seite. Klick nochmal zum Deselektieren.")
-
-if space_df is not None and not space_df.empty:
-    storey_order = (
-        space_df["storey"].value_counts().index.tolist()
-        if "storey" in space_df.columns else None
+def render_kpi(label: str, value: str):
+    st.markdown(
+        f'<div style="background:#FFFFFF; border-top: 4px solid #2E86AB; border-radius: 4px; '
+        f'padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 12px; text-align: center;">'
+        f'<div style="font-size: 0.82rem; color: #8B8B8B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">{label}</div>'
+        f'<div style="font-size: 1.7rem; font-weight: 700; color: #2D2D2D; margin-top: 4px;">{value}</div>'
+        f'</div>',
+        unsafe_allow_html=True
     )
-    fig_bar = create_room_stacked_bar(space_df, storey_order=storey_order)
-    ev_bar  = st.plotly_chart(fig_bar, on_select="rerun", key="cf_p2_storey_bar", use_container_width=True)
 
-    if ev_bar and ev_bar.selection.points:
-        pt      = ev_bar.selection.points[0]
-        clicked = pt.get("x") or pt.get("label")
-        st.session_state.cf_page2_storey = (
-            None if clicked == st.session_state.get("cf_page2_storey") else clicked
-        )
-        st.rerun()
-else:
-    st.info("Keine Raumdaten verfügbar.")
+kcols = st.columns(5)
+with kcols[0]:
+    render_kpi("Gesamtfläche", f"{total_area:,.1f} m²" if total_area > 0 else "–")
+with kcols[1]:
+    render_kpi("Anzahl Räume", f"{room_count:,}" if room_count > 0 else "–")
+with kcols[2]:
+    render_kpi("Fenster", f"{window_count:,}" if window_count > 0 else "–")
+with kcols[3]:
+    render_kpi("Türen", f"{door_count:,}" if door_count > 0 else "–")
+with kcols[4]:
+    render_kpi("Total CO₂", f"{total_co2:,.0f} kg" if total_co2 > 0 else "–")
 
 st.divider()
 
-# ── 3. CO₂-Überblick: Treemap als sekundäres Detail-Chart ─────────────────────
-# Analytische Frage: "Wie verteilt sich der CO₂-Ausstoss auf Materialgruppen?"
-# → Treemap: Anteil + Grösse gleichzeitig, für technisch affine Nutzer
-if element_df is not None and not element_df.empty and "co2e_total" in element_df.columns:
-    st.subheader("CO₂e-Verteilung nach Material")
-    st.caption("Flächengrösse = CO₂e-Anteil. Klick auf Material filtert Material-Filter auf Page 5.")
+# ── 2️⃣ Treemap: "Welcher Raumtyp nimmt wie viel Fläche ein?" ──────────────────
 
-    fig_co2 = create_co2_treemap(element_df)
-    ev_co2  = st.plotly_chart(fig_co2, on_select="rerun", key="cf_p2_co2_treemap", use_container_width=True)
+st.subheader("Räumliche Flächenverteilung")
+st.caption("Proportionen der Raumtypen nach Netto-Geschossfläche (NFA). Klicken Sie auf einen Typ, um andere Seiten zu filtern.")
 
-    if ev_co2 and ev_co2.selection.points:
-        pt      = ev_co2.selection.points[0]
-        clicked = pt.get("label") or pt.get("id", "")
-        if "__" in str(clicked):
-            clicked = clicked.split("__")[0]
-        st.session_state.cf_page2_material = (
-            None if clicked == st.session_state.get("cf_page2_material") else clicked
-        )
-        st.rerun()
+if has_spaces:
+    fig_tree = create_room_treemap(space_df)
+    ev_tree = st.plotly_chart(fig_tree, on_select="rerun", key="ov_treemap", use_container_width=True)
+    
+    # Master filter logic
+    if ev_tree and ev_tree.selection.points:
+        pt = ev_tree.selection.points[0]
+        clicked = pt.get("label") or pt.get("id") or ""
+        if clicked and clicked not in ("Gesamt", "root", "Total"):
+            # Set global cross-filter for rooms
+            prev = st.session_state.get("cf_page3_usage")
+            st.session_state.cf_page3_usage = None if clicked == prev else clicked
+            st.info(f"Aktiver Filter für Räume gesetzt: **{clicked}** (Wird auf Seite 3 angewendet)")
+            st.rerun()
+else:
+    st.info("Dieses Modell enthält keine Räume (IfcSpace) für eine Treemap-Flächenverteilung.")

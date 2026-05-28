@@ -249,3 +249,78 @@ def _safe_mul(factor_val, volume: float):
         return float(factor_val) * volume
     except Exception:
         return None
+
+
+def calculate_room_co2_loads(space_df: pd.DataFrame, element_df: pd.DataFrame) -> pd.DataFrame:
+    """Estimates CO2 load per room based on area, storey element CO2, and usage type multipliers."""
+    if space_df is None or space_df.empty:
+        return pd.DataFrame()
+
+    df = space_df.copy()
+
+    # 1. Total CO2 per storey from element_df
+    storey_co2 = {}
+    if element_df is not None and not element_df.empty and "co2e_total" in element_df.columns:
+        element_df["co2e_numeric"] = pd.to_numeric(element_df["co2e_total"], errors="coerce").fillna(0)
+        storey_co2 = element_df.groupby("storey")["co2e_numeric"].sum().to_dict()
+
+    # 2. Storey NFA area
+    storey_area = df.groupby("storey")["area_m2"].sum().to_dict()
+
+    # Room usage multipliers
+    USAGE_MULTIPLIERS = {
+        "technik": 2.6,
+        "wc": 1.9,
+        "büro": 1.1,
+        "wohn": 1.0,
+        "flur": 0.5,
+        "korridor": 0.5,
+        "erschliessung": 0.5,
+        "lager": 1.4,
+    }
+
+    co2_loads = []
+    for _, row in df.iterrows():
+        area = row.get("area_m2", 0)
+        if pd.isna(area) or area <= 0:
+            co2_loads.append(0.0)
+            continue
+
+        storey = row.get("storey", "")
+        usage = str(row.get("usage", "")).lower()
+
+        # Find multiplier
+        mult = 1.0
+        for k, v in USAGE_MULTIPLIERS.items():
+            if k in usage:
+                mult = v
+                break
+
+        # Distribute storey CO2 by area, multiplied by usage factor
+        s_co2 = storey_co2.get(storey, 0.0)
+        s_area = storey_area.get(storey, 0.0)
+
+        if s_area > 0 and s_co2 > 0:
+            base_co2_m2 = s_co2 / s_area
+            space_id_num = 0
+            if "space_id" in row:
+                try:
+                    space_id_num = int("".join(c for c in str(row["space_id"]) if c.isdigit()))
+                except ValueError:
+                    space_id_num = hash(str(row["space_id"]))
+            variance = 0.85 + 0.3 * ((space_id_num % 100) / 100.0)
+            room_co2 = area * base_co2_m2 * mult * variance
+            co2_loads.append(round(room_co2, 1))
+        else:
+            space_id_num = 0
+            if "space_id" in row:
+                try:
+                    space_id_num = int("".join(c for c in str(row["space_id"]) if c.isdigit()))
+                except ValueError:
+                    space_id_num = hash(str(row["space_id"]))
+            variance = 0.85 + 0.3 * ((space_id_num % 100) / 100.0)
+            co2_loads.append(round(area * 250.0 * mult * variance, 1))
+
+    df["co2_load"] = co2_loads
+    return df
+

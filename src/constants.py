@@ -1,42 +1,80 @@
+# Unified Color Palette and Constants according to Course Guidelines
+
 COLORS = {
-    "neubau": "#4CAF93",     # Mintgrün — neu, wachsend, positiv
-    "abbruch": "#D97B4F",    # Terrakotta — Rückbau, warm aber kein Alarm
-    "bestand": "#8DA89E",    # Salbeigrau — neutral, natürlich, schon da
-    "temporaer": "#A67DB8",  # Gedämpftes Violett — speziell, selten
-    "primary": "#2E7D6B",    # Tannengrün — Nachhaltigkeit, BIM, Hauptfarbe
-    "neutral": "#C8D5D2",
-    "unknown": "#A8B8B4",
-    "error_ok": "#4CAF93",       # Mintgrün — alles gut
-    "error_warning": "#D4A017",  # Amber — Aufmerksamkeit
-    "error_critical": "#C0492C", # Ziegelrot — ernst, klar lesbar
-    "text": "#2C3E35",
-    "text_light": "#6B8C85",
-    "grid": "#EAF0EE",
+    "neubau": "#2E86AB",         # Stahlblau (Akzentfarbe)
+    "abbruch": "#D94F3D",        # Rot — Abbruch / hohe Belastung
+    "bestand": "#8B8B8B",        # Mittelgrau — neutral, Bestand
+    "temporaer": "#5C6E7E",      # Blaugrau
+    "primary": "#2E86AB",        # Stahlblau — Akzentfarbe
+    "neutral": "#CCCCCC",        # Hellgrau — Nicht-selektiert
+    "unknown": "#CCCCCC",
+    "error_ok": "#A8D5B5",       # Grün — kein Fehler
+    "error_warning": "#F5E642",  # Gelb — Warnung
+    "error_critical": "#D94F3D", # Rot — kritischer Fehler
+    "text": "#2D2D2D",           # Dunkelgrau
+    "text_light": "#8B8B8B",     # Mittelgrau
+    "grid": "#EAEAEA",           # Sehr helles Grau für Gitternetzlinien
 }
 
 STATUS_COLORS = {
-    "Neubau": "#4CAF93",         # Mintgrün
-    "Abbruch": "#D97B4F",        # Terrakotta
-    "Bestand": "#8DA89E",        # Salbeigrau
-    "Temporär": "#A67DB8",       # Gedämpftes Violett
-    "Nicht gefunden": "#C8D5D2",
+    "Neubau": "#2E86AB",
+    "Abbruch": "#D94F3D",
+    "Bestand": "#8B8B8B",
+    "Temporär": "#5C6E7E",
+    "Nicht gefunden": "#CCCCCC",
 }
 
-# Max 7 distinct categories — kohärentes Natur/Nachhaltigkeits-Schema
+# Sequential scale for CO2: Low (Green) -> Mid (Yellow) -> High (Red)
+CO2_SCALE = [
+    "#A8D5B5",  # Niedrig
+    "#F5E642",  # Mittel
+    "#D94F3D",  # Hoch
+]
+
+# Consistent Room Type Palette
+ROOM_COLORS = {
+    "Büro": "#2E86AB",       # Stahlblau
+    "Flur": "#8B8B8B",       # Mittelgrau
+    "Korridor": "#8B8B8B",
+    "Erschliessung": "#8B8B8B",
+    "WC": "#C8A96E",         # Amber/Gold
+    "Technik": "#5C6E7E",    # Blaugrau
+    "Wohnen": "#A8D4E6",     # Hellblau
+    "Andere": "#CCCCCC",     # Hellgrau
+    "Sonstige": "#CCCCCC",
+    "Unbekannt": "#CCCCCC",
+}
+
+# Consistent Material Palette
+MATERIAL_COLORS = {
+    "Stahlbeton": "#2E86AB",     # Stahlblau
+    "Beton": "#2E86AB",
+    "Stahl": "#5C6E7E",          # Blaugrau
+    "Metall": "#5C6E7E",
+    "Holz": "#C8A96E",           # Holz/Gold
+    "Backstein": "#D94F3D",      # Ziegelrot
+    "Ziegel": "#D94F3D",
+    "Dämmung": "#A8D4E6",        # Hellblau
+    "Glas": "#8B8B8B",           # Neutralgrau
+    "Gips": "#CCCCCC",           # Hellgrau
+    "Andere": "#CCCCCC",
+    "Sonstige": "#CCCCCC",
+    "Unbekannt": "#CCCCCC",
+}
+
 CATEGORICAL_COLORS = [
-    "#2E7D6B",  # Tannengrün (Hauptfarbe)
-    "#4CAF93",  # Mintgrün
-    "#8DA89E",  # Salbeigrau
-    "#D97B4F",  # Terrakotta
-    "#D4A017",  # Amber/Sand
-    "#A67DB8",  # Gedämpftes Violett
-    "#A8B8B4",  # Grau (Sonstige/Unbekannt)
+    "#2E86AB",  # Büro
+    "#8B8B8B",  # Flur
+    "#C8A96E",  # WC
+    "#5C6E7E",  # Technik
+    "#A8D4E6",  # Wohnen
+    "#CCCCCC",  # Andere
 ]
 
 CHART_DEFAULTS = {
     "font_family": "Inter, sans-serif",
     "font_size": 12,
-    "font_color": "#2C3E35",
+    "font_color": "#2D2D2D",
     "margin": dict(l=60, r=20, t=50, b=50),
     "paper_bgcolor": "rgba(0,0,0,0)",
     "plot_bgcolor": "rgba(0,0,0,0)",

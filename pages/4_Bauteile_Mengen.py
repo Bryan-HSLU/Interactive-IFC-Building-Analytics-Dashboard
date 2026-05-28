@@ -3,10 +3,9 @@ import pandas as pd
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
-    create_class_bar_horizontal, create_class_storey_stacked,
-    create_material_quantity_bar, create_diverging_bar,
-    create_grouped_bar, create_element_treemap,
-    create_volume_violin, create_volume_histogram, create_raincloud_plot,
+    create_class_bar_horizontal,
+    create_class_storey_stacked,
+    create_material_quantity_bar,
 )
 from src.ui_helpers import apply_unit_conversion, unit_caption
 
@@ -68,7 +67,12 @@ kpi[1].metric("Total Elements", f"{len(element_df):,}")
 kpi[2].metric("Total Volume", f"{vol_sum:,.1f} m\u00b3")
 kpi[3].metric("Materials", f"{element_df['material'].nunique()}" if "material" in element_df.columns else "\u2013")
 
-# -- Section B: Class Analysis -------------------------------------------------
+st.divider()
+
+# -- Chart A: IFC Class Bar (horizontal, cross-filterable) ---------------------
+# -- Chart B: Stacked Bar (IFC-Class x Storey) ---------------------------------
+# Clicking Chart A filters Chart B and the table below.
+
 st.caption("Click a bar to filter all charts and the table below. Click the same bar again to deselect.")
 col_left, col_right = st.columns(2)
 
@@ -80,77 +84,43 @@ elif isinstance(storey_df, pd.DataFrame) and not storey_df.empty:
     storey_order = storey_df["name"].tolist() if "name" in storey_df.columns else None
 
 with col_left:
+    st.subheader("Elements by IFC Class")
     fig_class_bar = create_class_bar_horizontal(element_df)
     ev_class = st.plotly_chart(fig_class_bar, on_select="rerun", key="cf_p4_class_bar", use_container_width=True)
     if ev_class and ev_class.selection.points:
         pt = ev_class.selection.points[0]
         clicked = pt.get("y") or pt.get("x") or pt.get("label")
         if clicked:
-            if clicked == st.session_state.get("cf_page4_class"):
-                st.session_state.cf_page4_class = None
-            else:
-                st.session_state.cf_page4_class = clicked
+            st.session_state.cf_page4_class = None if clicked == st.session_state.get("cf_page4_class") else clicked
             st.rerun()
 
 with col_right:
+    st.subheader("IFC Classes per Storey")
     fig_storey_stack = create_class_storey_stacked(element_df, storey_order)
     ev_storey = st.plotly_chart(fig_storey_stack, on_select="rerun", key="cf_p4_storey_stack", use_container_width=True)
     if ev_storey and ev_storey.selection.points:
         pt = ev_storey.selection.points[0]
         clicked_val = pt.get("y") or pt.get("x") or pt.get("label")
         if clicked_val:
-            if clicked_val == st.session_state.get("cf_page4_class"):
-                st.session_state.cf_page4_class = None
-            else:
-                st.session_state.cf_page4_class = clicked_val
+            st.session_state.cf_page4_class = None if clicked_val == st.session_state.get("cf_page4_class") else clicked_val
             st.rerun()
 
-# -- Section C: Material Quantities --------------------------------------------
 st.divider()
-col_mat, col_div = st.columns(2)
+
+# -- Chart C: Material Quantities Bar (cross-filterable) -----------------------
+st.subheader("Materials by Volume")
+st.caption("Click a bar to filter the table below by material.")
 unit = st.session_state.get("unit_volume", "m\u00b3")
+fig_mat = create_material_quantity_bar(element_df, unit)
+ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="cf_p4_mat_bar", use_container_width=True)
+if ev_mat and ev_mat.selection.points:
+    pt = ev_mat.selection.points[0]
+    clicked_mat = pt.get("y") or pt.get("x") or pt.get("label")
+    if clicked_mat:
+        st.session_state.cf_page4_material = None if clicked_mat == st.session_state.get("cf_page4_material") else clicked_mat
+        st.rerun()
 
-with col_mat:
-    fig_mat = create_material_quantity_bar(element_df, unit)
-    ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="cf_p4_mat_bar", use_container_width=True)
-    if ev_mat and ev_mat.selection.points:
-        pt = ev_mat.selection.points[0]
-        clicked_mat = pt.get("y") or pt.get("x") or pt.get("label")
-        if clicked_mat:
-            if clicked_mat == st.session_state.get("cf_page4_material"):
-                st.session_state.cf_page4_material = None
-            else:
-                st.session_state.cf_page4_material = clicked_mat
-            st.rerun()
-
-with col_div:
-    if mode == "umbau":
-        fig_div = create_diverging_bar(element_df)
-    else:
-        fig_div = create_material_quantity_bar(element_df, "m\u00b2" if "area_m2" in element_df.columns else unit)
-    st.plotly_chart(fig_div, use_container_width=True, key="cf_p4_div_bar")
-
-# -- Section D: Hierarchy & Comparison ----------------------------------------
-st.divider()
-st.subheader("Hierarchy & Comparison")
-col_tree4, col_grp = st.columns(2)
-with col_tree4:
-    st.plotly_chart(create_element_treemap(element_df), use_container_width=True)
-with col_grp:
-    st.plotly_chart(create_grouped_bar(element_df, mode), use_container_width=True)
-
-# -- Section E: Volume Distribution -------------------------------------------
-st.divider()
-st.subheader("Volume Distribution")
-tab_vio, tab_hist4, tab_rain = st.tabs(["Violin", "Histogram", "Raincloud"])
-with tab_vio:
-    st.plotly_chart(create_volume_violin(element_df), use_container_width=True)
-with tab_hist4:
-    st.plotly_chart(create_volume_histogram(element_df), use_container_width=True)
-with tab_rain:
-    st.plotly_chart(create_raincloud_plot(element_df), use_container_width=True)
-
-# -- Section F: Quantity Takeoff Table ----------------------------------------
+# -- Quantity Takeoff Table ----------------------------------------------------
 st.divider()
 st.subheader("Quantity Takeoff")
 

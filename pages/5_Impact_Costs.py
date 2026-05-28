@@ -3,8 +3,12 @@ import pandas as pd
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
-    create_co2_bar, create_co2_treemap, create_cost_bar,
-    create_waterfall_co2, create_sankey_material, create_slope_co2,
+    create_co2_bar,
+    create_co2_treemap,
+    create_cost_bar,
+    create_waterfall_co2,
+    create_sankey_material,
+    create_slope_co2,
 )
 from src.impact_calculator import get_impact_summary
 from src.ui_helpers import kpi_card, apply_unit_conversion, unit_caption
@@ -78,12 +82,8 @@ with tab_co2:
         co2_m2 = summary.get("co2e_per_m2")
         if co2_m2:
             diff = co2_m2 - SIA_2032_LIMIT
-            if diff <= 0:
-                d_color = COLORS["error_ok"]
-                d_text = f"below SIA 2032 ({SIA_2032_LIMIT:.0f} kg/m\u00b2)"
-            else:
-                d_color = COLORS["error_warning"]
-                d_text = f"above SIA 2032 ({SIA_2032_LIMIT:.0f} kg/m\u00b2)"
+            d_color = COLORS["error_ok"] if diff <= 0 else COLORS["error_warning"]
+            d_text = f"{'below' if diff<=0 else 'above'} SIA 2032 ({SIA_2032_LIMIT:.0f} kg/m\u00b2)"
             kpi_card("CO2e per m\u00b2 NFA", f"{co2_m2:.1f} kg/m\u00b2", d_text, d_color)
         else:
             kpi_card("CO2e per m\u00b2 NFA", "\u2013")
@@ -118,24 +118,26 @@ with tab_co2:
         with sub[1]: kpi_card("CO2e Demolition", f"{co2_abbruch:,.0f} kg")
 
     st.divider()
-    st.caption("Click a bar or treemap segment to filter the detail table below.")
+
+    # -- Chart A: CO2 Bar (interactive, cross-filters treemap + table) ----------
+    # -- Chart B: CO2 Treemap (interactive, cross-filters bar + table) ----------
+    st.caption("Click a bar or treemap segment to filter the detail table below. Click again to deselect.")
     col_bar, col_tree = st.columns(2)
 
     with col_bar:
+        st.subheader("CO\u2082e per Material")
         fig_co2_bar = create_co2_bar(element_df)
         ev_co2 = st.plotly_chart(fig_co2_bar, on_select="rerun", key="cf_p5_co2_bar", use_container_width=True)
         if ev_co2 and ev_co2.selection.points:
             pt = ev_co2.selection.points[0]
             clicked = pt.get("y") or pt.get("x") or pt.get("label")
             if clicked:
-                if clicked == st.session_state.get("cf_page5_material"):
-                    st.session_state.cf_page5_material = None
-                else:
-                    st.session_state.cf_page5_material = clicked
-                    st.session_state.cf_page5_treemap = None
+                st.session_state.cf_page5_material = None if clicked == st.session_state.get("cf_page5_material") else clicked
+                st.session_state.cf_page5_treemap = None
                 st.rerun()
 
     with col_tree:
+        st.subheader("CO\u2082e Share by Material")
         fig_treemap = create_co2_treemap(element_df)
         ev_tree = st.plotly_chart(fig_treemap, on_select="rerun", key="cf_p5_treemap", use_container_width=True)
         if ev_tree and ev_tree.selection.points:
@@ -145,13 +147,6 @@ with tab_co2:
                 st.session_state.cf_page5_treemap = clicked
                 st.session_state.cf_page5_material = clicked
                 st.rerun()
-
-    st.divider()
-    col_wf, col_sankey = st.columns(2)
-    with col_wf:
-        st.plotly_chart(create_waterfall_co2(element_df), use_container_width=True)
-    with col_sankey:
-        st.plotly_chart(create_sankey_material(element_df), use_container_width=True)
 
 with tab_cost:
     kpi_c = st.columns(3)

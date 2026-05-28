@@ -1,19 +1,15 @@
 import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
 from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
 from src.filters import render_sidebar
 from src.chart_factory import (
     create_room_sunburst,
-    create_room_bubble,
     create_co2_treemap,
-    create_status_distribution,
     create_material_quantity_bar,
     create_class_bar_horizontal,
 )
 from src.impact_calculator import get_impact_summary
 from src.ui_helpers import kpi_card
-from src.constants import SIA_2032_LIMIT, COLORS, STATUS_COLORS
+from src.constants import SIA_2032_LIMIT, COLORS
 
 init_session_state()
 
@@ -74,11 +70,17 @@ with kpi[4]:
 
 st.divider()
 
-# -- Row 1: Main Charts --------------------------------------------------------
+# -- Chart A: Sunburst (Stockwerk -> Raumtyp) ----------------------------------
+# Chart B: CO2 Treemap (Materialien nach CO2-Anteil)
+# Both are interactive: clicking sunburst filters session state for storey.
+# Treemap clicking filters the material cross-filter used in other pages.
+
 col_left, col_right = st.columns(2)
 
-if has_spaces:
-    with col_left:
+with col_left:
+    st.subheader("Room Structure by Storey")
+    st.caption("Click a storey segment to highlight it. Click again to deselect.")
+    if has_spaces:
         fig_sun = create_room_sunburst(space_df)
         ev_sun = st.plotly_chart(fig_sun, on_select="rerun", key="ov_sunburst", use_container_width=True)
         if ev_sun and ev_sun.selection.points:
@@ -89,70 +91,30 @@ if has_spaces:
                 prev = st.session_state.get("overview_storey")
                 st.session_state.overview_storey = None if clicked_label == prev else clicked_label
                 st.rerun()
-    with col_right:
-        sel_storey = st.session_state.get("overview_storey")
-        df_bubble = space_df[space_df["storey"] == sel_storey] if sel_storey and "storey" in space_df.columns else space_df
-        if sel_storey:
-            st.caption(f"Filtered: Storey **{sel_storey}**")
-        st.plotly_chart(create_room_bubble(df_bubble), use_container_width=True, key="ov_bubble")
-    if st.session_state.get("overview_storey"):
-        if st.button("Reset storey filter", key="ov_reset"):
-            st.session_state.overview_storey = None
-            st.rerun()
-else:
-    with col_left:
-        st.subheader("Materials by Volume")
-        if element_df is not None and not element_df.empty:
-            st.plotly_chart(create_material_quantity_bar(element_df, "m\u00b3"), use_container_width=True, key="ov_mat_bar")
-        else:
-            st.info("No element data available.")
-    with col_right:
+        if st.session_state.get("overview_storey"):
+            if st.button("Reset storey filter", key="ov_reset"):
+                st.session_state.overview_storey = None
+                st.rerun()
+    else:
         st.subheader("Elements by IFC Class")
         if element_df is not None and not element_df.empty:
             st.plotly_chart(create_class_bar_horizontal(element_df), use_container_width=True, key="ov_cls_bar")
         else:
             st.info("No element data available.")
 
-st.divider()
-
-# -- Row 2: CO2 Treemap + Status Donut -----------------------------------------
-if mode == "umbau" and element_df is not None and "status" in element_df.columns:
-    col_tree, col_donut = st.columns([3, 2])
-else:
-    col_tree = st.container()
-    col_donut = None
-
-with col_tree:
+with col_right:
+    st.subheader("CO\u2082 Impact by Material")
+    st.caption("Click a segment to filter the Impact & Costs page. Click again to deselect.")
     if element_df is not None and not element_df.empty:
-        st.subheader("CO\u2082 Impact by Material")
-        st.plotly_chart(create_co2_treemap(element_df), use_container_width=True, key="ov_co2tree")
+        fig_tree = create_co2_treemap(element_df)
+        ev_tree = st.plotly_chart(fig_tree, on_select="rerun", key="ov_co2tree", use_container_width=True)
+        if ev_tree and ev_tree.selection.points:
+            pt = ev_tree.selection.points[0]
+            clicked = pt.get("label") or pt.get("id") or pt.get("x")
+            if clicked and clicked not in ("Gesamt", "root", "Total"):
+                prev = st.session_state.get("cf_page5_treemap")
+                st.session_state.cf_page5_treemap = None if clicked == prev else clicked
+                st.session_state.cf_page5_material = st.session_state.cf_page5_treemap
+                st.rerun()
     else:
         st.info("No CO\u2082 data available.")
-
-if col_donut is not None:
-    with col_donut:
-        status_counts = element_df["status"].value_counts()
-        total_el = len(element_df)
-        fig_donut = go.Figure(go.Pie(
-            labels=status_counts.index.tolist(),
-            values=status_counts.values.tolist(),
-            hole=0.58,
-            marker=dict(colors=[STATUS_COLORS.get(s, COLORS["neutral"]) for s in status_counts.index], line=dict(color="white", width=2)),
-            textinfo="label+percent",
-            hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Share: %{percent}<extra></extra>",
-        ))
-        fig_donut.update_layout(
-            title=dict(text="Status Distribution", font=dict(size=16, color=COLORS["text"]), x=0),
-            paper_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=20, r=20, t=50, b=20),
-            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-            annotations=[dict(
-                text=f"<b>{total_el:,}</b><br><span style='font-size:11px;color:{COLORS['text_light']}'>Elements</span>",
-                x=0.5, y=0.5, font_size=18, showarrow=False, font_color=COLORS["text"],
-            )],
-        )
-        st.plotly_chart(fig_donut, use_container_width=True, key="ov_donut")
-
-if mode == "umbau" and element_df is not None and "status" in element_df.columns:
-    st.divider()
-    st.plotly_chart(create_status_distribution(element_df), use_container_width=True, key="ov_status_dist")

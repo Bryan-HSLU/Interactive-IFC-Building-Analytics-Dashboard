@@ -11,46 +11,66 @@ MATERIAL_ALIASES = [
     (["leichtbeton", "lightweight concrete", "porenbeton", "ytong", "gasbeton"], "concrete_lightweight"),
     (["betonfertigteil", "betonstein", "precast", "fertigteil"], "precast_concrete"),
     (["beton", "concrete", "sichtbeton", "ortbeton", "fundament"], "concrete"),
-    # Wood
+    # Wood – Laubholz (spezifischer) vor Nadelholz
     (["laubholz", "hardwood", "buche", "eiche", "esche", "ahorn"], "wood_hardwood"),
-    (["nadelholz", "softwood", "fichte", "tanne", "kiefer", "lärche", "föhre", "holzwerkstoff", "holz"], "wood_softwood"),
+    # Holzwerkstoffe & Plattenwerkstoffe → Nadelholz als Annäherung
+    (["vollholz", "sperrholz", "osb", "holzplatte", "furnierplatte", "multiplex",
+      "brettschichtholz", "bsh", "brettsperrholz", "clt", "kreuzlagenholz",
+      "holzwerkstoff", "holzbalken", "holzst\u00e4nder", "holzrahmen",
+      "holz fassade", "holzfassade", "fassade holz", "holzverkleidung",
+      "holzdielen", "parkett", "dielenboden",
+      "nadelholz", "softwood", "fichte", "tanne", "kiefer", "l\u00e4rche", "f\u00f6hre", "holz", "wood"], "wood_softwood"),
     # Masonry
     (["backstein", "backsteinmauerwerk", "ziegel", "ziegelmauerwerk", "mauerziegel", "backsteinziegel"], "brick"),
-    (["mauerwerk", "natursteinmauerwerk"], "brick"),
-    # Insulation
-    (["eps", "styropor", "polystyrol expandiert"], "insulation_eps"),
+    (["mauerwerk", "natursteinmauerwerk", "kalksandstein", "ks stein", "poroton"], "brick"),
+    # Insulation – EPS vor PUR vor Mineralwolle (spezifisch → allgemein)
+    (["eps", "styropor", "polystyrol expandiert", "xps", "extrudiertes polystyrol"], "insulation_eps"),
     (["pur", "pir", "polyurethan"], "insulation_pur"),
-    (["mineralwolle", "steinwolle", "glaswolle", "mineral wool", "wärmedämmung", "dämmung", "dämmstoff", "isolation"], "insulation_mineral"),
+    (["mineralwolle", "steinwolle", "glaswolle", "mineral wool",
+      "w\u00e4rmed\u00e4mmung", "d\u00e4mmung", "d\u00e4mmstoff", "isolation",
+      "d\u00e4mm", "isol", "thermodach", "aufsparrd\u00e4mmung"], "insulation_mineral"),
     # Steel / Metal
-    (["stahl", "steel", "eisen", "iron", "metal", "metall", "träger", "blech", "stahlprofil"], "steel"),
+    (["stahl", "steel", "eisen", "iron", "metal", "metall", "tr\u00e4ger", "blech", "stahlprofil",
+      "hohlprofil", "i-profil", "hea", "heb", "ipe", "rhs", "chs"], "steel"),
     (["aluminium", "aluminum", "alu "], "aluminum"),
     (["kupfer", "copper"], "copper"),
     (["zink", "zinc"], "zinc"),
     (["blei", "lead"], "lead"),
     # Glass
-    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg"], "glass"),
+    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg", "dreifachverglasung", "zweifachverglasung"], "glass"),
     # Gypsum / plaster
     (["gipskarton", "gipsplatte", "rigips", "knauf"], "gypsum_board"),
     (["gips", "gypsum"], "gypsum"),
-    (["verputz", "putz", "plaster", "rabitz", "bekleidung"], "plaster"),
-    (["mörtel", "mortar", "unterlagsboden"], "mortar"),
+    (["verputz", "putz", "plaster", "rabitz", "bekleidung", "aussenputz", "innenputz", "kellenputz"], "plaster"),
+    # Screed / mortar – Estrich vor Mörtel
+    (["estrich", "unterlagsboden", "anhydrit", "zementestrich", "heizestrich"], "mortar"),
+    (["m\u00f6rtel", "mortar", "fugm\u00f6rtel", "d\u00fcnnbettm\u00f6rtel"], "mortar"),
+    # Waterproofing / membranes
+    (["folie", "epdm", "abdichtungsbahn", "dampfsperre", "dampfbremse",
+      "feuchtigkeitssperre", "bitumenbahn", "schweissbahn"], "bitumen"),
+    (["bitumen", "dachpappe", "abdichtung"], "bitumen"),
+    # Facade panels
+    (["fassadenplatte", "faserzementplatte", "hpl", "trespa", "eternit panel",
+      "sandwichpanel", "sandwich panel", "fassadenverkleidung"], "fibre_cement"),
+    (["faserzement", "eternit", "fibre cement"], "fibre_cement"),
     # Stone
     (["kalkstein", "limestone"], "limestone"),
     (["sandstein", "sandstone"], "sandstone"),
     (["naturstein", "natural stone", "granit", "marmor", "schiefer"], "natural_stone"),
-    (["keramikfliesen", "fliesen", "tiles"], "ceramic_tile"),
+    (["keramikfliesen", "fliesen", "tiles", "bodenfliesen", "wandfliesen"], "ceramic_tile"),
     (["keramik", "ceramic", "terrakotta kachel"], "ceramic"),
-    # Other
-    (["bitumen", "dachpappe", "abdichtung"], "bitumen"),
+    # Flooring
     (["linoleum", "lino"], "linoleum"),
+    (["gummi", "rubber", "kautschuk", "gummiboden"], "rubber"),
+    # Plastics
     (["pvc", "kunststoff", "plastik"], "pvc"),
-    (["lehm", "clay", "stampflehm"], "clay"),
-    (["kork", "cork"], "kork"),
-    (["stroh", "straw"], "straw"),
-    (["mineralfaser", "mineral fibre"], "mineral_fibre"),
-    (["faserzement", "eternit", "fibre cement"], "fibre_cement"),
-    (["gummi", "rubber", "kautschuk"], "rubber"),
     (["polyethylen", "pe ", "hdpe", "polyethylene"], "polyethylene"),
+    # Natural / bio
+    (["lehm", "clay", "stampflehm", "lehmputz"], "clay"),
+    (["kork", "cork"], "cork"),
+    (["stroh", "straw"], "straw"),
+    # Other mineral
+    (["mineralfaser", "mineral fibre"], "mineral_fibre"),
 ]
 
 
@@ -323,4 +343,3 @@ def calculate_room_co2_loads(space_df: pd.DataFrame, element_df: pd.DataFrame) -
 
     df["co2_load"] = co2_loads
     return df
-

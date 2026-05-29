@@ -6,9 +6,11 @@ STATUS_MAP = {
     "new": "Neubau", "neu": "Neubau", "neubau": "Neubau",
     "existing": "Bestand", "bestand": "Bestand", "exist": "Bestand",
     "demolished": "Abbruch", "abbruch": "Abbruch", "rückbau": "Abbruch",
-    "demolish": "Abbruch", "demo": "Abbruch",
+    "demolish": "Abbruch", "demo": "Abbruch", "to be demolished": "Abbruch",
     "temporary": "Temporär", "temporär": "Temporär", "temp": "Temporär",
 }
+
+RENOVATION_STATUS_KEYS = ["Renovation Status", "renovation status", "RenovationStatus", "Status", "Phase"]
 
 
 def build_element_df(parsed_data: dict, mode: str, pset_config: dict) -> pd.DataFrame:
@@ -53,22 +55,31 @@ def assign_status(df: pd.DataFrame, mode: str, pset_name: str, property_name: st
     def _get_status(row):
         psets = row.get("psets", {})
         if not isinstance(psets, dict):
-            return "Nicht gefunden"
-        target_pset = psets.get(pset_name, {})
-        if not isinstance(target_pset, dict):
-            return "Nicht gefunden"
-        status_value = target_pset.get(property_name)
+            return "Bestand"
+
+        # 1) Try configured pset + property
+        status_value = None
+        if pset_name:
+            target_pset = psets.get(pset_name, {})
+            if isinstance(target_pset, dict):
+                status_value = target_pset.get(property_name)
+
+        # 2) Scan all psets for known renovation status keys
         if status_value is None:
-            # Try common alternative Psets
-            for alt_pset in ["Pset_BuildingElementCommon", "Pset_WallCommon", "Pset_SlabCommon"]:
-                alt = psets.get(alt_pset, {})
-                if isinstance(alt, dict) and "Status" in alt:
-                    status_value = alt["Status"]
+            for pset_data in psets.values():
+                if not isinstance(pset_data, dict):
+                    continue
+                for key in RENOVATION_STATUS_KEYS:
+                    if key in pset_data:
+                        status_value = pset_data[key]
+                        break
+                if status_value is not None:
                     break
+
         if status_value is None:
-            return "Nicht gefunden"
+            return "Bestand"
         normalized = str(status_value).strip().lower()
-        return STATUS_MAP.get(normalized, "Nicht gefunden")
+        return STATUS_MAP.get(normalized, "Bestand")
 
     df["status"] = df.apply(_get_status, axis=1)
     return df

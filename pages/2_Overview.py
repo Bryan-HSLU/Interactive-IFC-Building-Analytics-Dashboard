@@ -4,7 +4,6 @@ from src.state_manager import (
     init_session_state,
     get_element_df,
     get_space_df,
-    get_quality_data,
 )
 from src.filters import render_sidebar
 from src.chart_factory import create_room_treemap

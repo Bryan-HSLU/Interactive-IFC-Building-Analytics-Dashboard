@@ -29,7 +29,11 @@ if not st.session_state.get("ifc_parsed"):
     st.stop()
 
 element_df = get_element_df(filtered=True)
-error_df, quality_summary = get_quality_data()
+space_df = get_space_df(filtered=True)
+
+from src.quality_checker import check_quality, calculate_quality_score
+error_df, quality_summary = check_quality(element_df, space_df, mode)
+quality_summary["score"] = calculate_quality_score(quality_summary)
 
 if not quality_summary:
     st.title("Qualitätsprüfung")

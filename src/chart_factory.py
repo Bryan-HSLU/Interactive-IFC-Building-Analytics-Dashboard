@@ -371,6 +371,12 @@ def create_room_co2_scatter(space_df: pd.DataFrame, selected_raum: str = None) -
     df["co2_load"] = pd.to_numeric(df["co2_load"], errors="coerce")
     df = df[(df["area_m2"] > 0) & (df["co2_load"] >= 0)]
 
+    if "raum_nr" not in df.columns:
+        df["raum_nr"] = df["name"]
+    if "raumname" not in df.columns:
+        df["raumname"] = df["usage"]
+    df["label"] = df["raum_nr"].astype(str) + " – " + df["raumname"]
+
     if df.empty:
         return _empty_fig("Keine quantitativen Werte für Scatter Plot")
 
@@ -401,11 +407,6 @@ def create_room_co2_scatter(space_df: pd.DataFrame, selected_raum: str = None) -
     for usage in usages:
         sub = df[df["grouped_usage"] == usage]
         base_color = sub["group_color"].iloc[0]
-        names = (
-            sub["name"].astype(str).tolist()
-            if "name" in sub.columns
-            else ["Raum"] * len(sub)
-        )
 
         marker_colors = []
         marker_sizes = []
@@ -413,9 +414,9 @@ def create_room_co2_scatter(space_df: pd.DataFrame, selected_raum: str = None) -
         line_widths = []
 
         for idx, row in sub.iterrows():
-            rname = row.get("name", "")
+            rlabel = row.get("label", "")
             if selected_raum:
-                if rname == selected_raum:
+                if rlabel == selected_raum:
                     marker_colors.append(hex_to_rgba(base_color, 1.0))
                     marker_sizes.append(20)
                     line_colors.append("rgba(0,0,0,1.0)")
@@ -442,7 +443,7 @@ def create_room_co2_scatter(space_df: pd.DataFrame, selected_raum: str = None) -
                     size=marker_sizes,
                     line=dict(width=line_widths, color=line_colors),
                 ),
-                text=names,
+                text=sub["label"].tolist(),
                 customdata=sub["usage"].tolist(),
                 hovertemplate="<b>%{text}</b><br>Kategorie: "
                 + usage
@@ -948,6 +949,12 @@ def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = Non
     df["co2_load"] = pd.to_numeric(df["co2_load"], errors="coerce")
     df = df[(df["area_m2"] > 0) & (df["co2_load"] >= 0)]
 
+    if "raum_nr" not in df.columns:
+        df["raum_nr"] = df["name"]
+    if "raumname" not in df.columns:
+        df["raumname"] = df["usage"]
+    df["label"] = df["raum_nr"].astype(str) + " – " + df["raumname"]
+
     if df.empty:
         return _empty_fig("Keine quantitativen Werte für CO₂-Dichte-Chart")
 
@@ -981,10 +988,10 @@ def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = Non
         return f"rgba({r},{g},{b},{opacity})"
 
     for idx, row in df.iterrows():
-        rname = row.get("name", "")
+        rlabel = row.get("label", "")
         base_color = row.get("group_color", "#CCCCCC")
         if selected_raum:
-            if rname == selected_raum:
+            if rlabel == selected_raum:
                 # Hervorgehoben: Volle Opazität + dicke schwarze Kontur
                 bar_colors.append(hex_to_rgba(base_color, 1.0))
                 line_colors.append("rgba(0,0,0,1.0)")
@@ -1004,7 +1011,7 @@ def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = Non
     fig = go.Figure(
         go.Bar(
             x=df["co2_dichte"],
-            y=df["name"],
+            y=df["label"],
             orientation="h",
             marker=dict(
                 color=bar_colors,

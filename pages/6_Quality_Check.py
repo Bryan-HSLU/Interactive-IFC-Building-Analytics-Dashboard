@@ -8,7 +8,7 @@ from src.state_manager import (
     get_quality_data,
 )
 from src.filters import render_sidebar, render_cross_filter_reset
-from src.chart_factory import create_pset_matrix_heatmap
+from src.chart_factory import create_pset_lollipop_chart
 from src.quality_checker import build_pset_matrix
 
 init_session_state()
@@ -163,18 +163,119 @@ with col_bar:
 
 st.divider()
 
-# ── Pset-Heatmap ──────────────────────────────────────────────────────────────
-st.subheader("Pset-Verfügbarkeit nach IFC-Klasse")
-st.caption("🔵 Blau = vorhanden  🟠 Orange = fehlend")
+# ── Lollipop Chart + Interaktive KPI-Card ─────────────────────────────────────
 if element_df is not None and not element_df.empty:
     pset_matrix = build_pset_matrix(element_df)
     if pset_matrix is not None and not pset_matrix.empty:
-        if len(pset_matrix.columns) > 15:
-            top_cols = pset_matrix.sum().nlargest(15).index
-            pset_matrix = pset_matrix[top_cols]
-        st.plotly_chart(
-            create_pset_matrix_heatmap(pset_matrix), use_container_width=True
-        )
+        total_psets = len(pset_matrix.columns)
+
+        # Berechne Vollständigkeit pro Klasse für die KPI-Verknüpfung
+        class_completeness = {}
+        class_missing = {}
+        for cls in pset_matrix.index:
+            present = int((pset_matrix.loc[cls] > 0).sum())
+            pct = present / total_psets * 100 if total_psets > 0 else 0
+            class_completeness[cls] = round(pct, 1)
+            class_missing[cls] = total_psets - present
+
+        # Session State initialisieren
+        if "selected_klasse" not in st.session_state:
+            st.session_state["selected_klasse"] = None
+
+        col_lollipop_kpi, col_lollipop_chart = st.columns([1, 2])
+
+        # ── Interaktive KPI-Card (links) ──
+        with col_lollipop_kpi:
+            selected = st.session_state.get("selected_klasse")
+
+            if selected and selected in class_completeness:
+                kpi_title = f"PSET-QUALITÄT: {selected}"
+                kpi_value = class_completeness[selected]
+                kpi_missing = class_missing[selected]
+                kpi_subtitle = f"{kpi_missing} von {total_psets} Psets fehlen"
+            else:
+                kpi_title = "PSET-QUALITÄT (GESAMT)"
+                overall = (
+                    sum(class_completeness.values()) / len(class_completeness)
+                    if class_completeness
+                    else 0
+                )
+                kpi_value = round(overall, 1)
+                kpi_subtitle = f"Ø über {len(class_completeness)} IFC-Klassen"
+
+            kpi_bar_width = max(0.0, min(float(kpi_value), 100.0))
+            kpi_bar_color = "#2E86AB" if kpi_value >= 50 else "#E07B39"
+
+            st.markdown(
+                f"""
+                <div style="
+                    background: #FFFFFF;
+                    border: 1px solid #E8E8E8;
+                    border-radius: 12px;
+                    padding: 28px 24px 22px 24px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+                    text-align: center;
+                    min-height: 320px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                ">
+                    <div style="color: #888; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px; word-break: break-word;">
+                        {kpi_title}
+                    </div>
+                    <div style="font-size: 64px; font-weight: 800; color: #1A1A2E; line-height: 1.0; margin-bottom: 16px;">
+                        {kpi_value:.1f}<span style="font-size: 30px; font-weight: 600; color: #888;">%</span>
+                    </div>
+                    <div style="background: #F0F0F0; border-radius: 999px; height: 12px; width: 100%; overflow: hidden;">
+                        <div style="
+                            background: {kpi_bar_color};
+                            width: {kpi_bar_width}%;
+                            height: 100%;
+                            border-radius: 999px;
+                            transition: width 0.3s ease;
+                        "></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                        <span style="font-size: 11px; color: #AAA;">0%</span>
+                        <span style="font-size: 11px; color: #AAA;">100%</span>
+                    </div>
+                    <div style="color: #999; font-size: 12px; margin-top: 12px;">
+                        {kpi_subtitle}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if selected:
+                if st.button(
+                    "↩ Gesamtansicht",
+                    key="reset_klasse",
+                    use_container_width=True,
+                ):
+                    st.session_state["selected_klasse"] = None
+                    st.rerun()
+
+        # ── Lollipop Chart (rechts) ──
+        with col_lollipop_chart:
+            fig_lollipop = create_pset_lollipop_chart(pset_matrix)
+            event = st.plotly_chart(
+                fig_lollipop,
+                use_container_width=True,
+                on_select="rerun",
+                key="lollipop_chart",
+            )
+
+            # Klick-Interaktion auswerten
+            if event and hasattr(event, "selection") and event.selection:
+                points = event.selection.get("points", [])
+                if points:
+                    point = points[0]
+                    clicked_class = point.get("y")
+                    if clicked_class and clicked_class in class_completeness:
+                        if st.session_state.get("selected_klasse") != clicked_class:
+                            st.session_state["selected_klasse"] = clicked_class
+                            st.rerun()
     else:
         st.info("Keine Pset-Daten verfügbar.")
 else:

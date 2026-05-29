@@ -797,3 +797,100 @@ def create_pset_matrix_heatmap(pset_matrix: pd.DataFrame) -> go.Figure:
         margin=dict(l=20, r=20, t=50, b=60),
     )
     return fig
+
+
+def create_pset_lollipop_chart(pset_matrix: pd.DataFrame) -> go.Figure:
+    """Lollipop Chart: Pset-Vollständigkeit (%) pro IFC-Klasse.
+    Farbe: Orange (#E07B39) unter 50%, Blau (#2E86AB) ab 50%.
+    """
+    if pset_matrix is None or pset_matrix.empty:
+        return _empty_fig("Keine Pset-Daten verfügbar")
+
+    total_psets = len(pset_matrix.columns)
+    if total_psets == 0:
+        return _empty_fig("Keine Psets gefunden")
+
+    # Berechne Vollständigkeit pro IFC-Klasse
+    completeness = (pset_matrix > 0).sum(axis=1) / total_psets * 100
+    completeness = completeness.sort_values(ascending=False)  # Schlechteste oben
+
+    classes = completeness.index.tolist()
+    values = completeness.values.tolist()
+    missing_counts = [total_psets - int((pset_matrix.loc[c] > 0).sum()) for c in classes]
+
+    COLOR_GOOD = "#2E86AB"
+    COLOR_BAD = "#E07B39"
+
+    fig = go.Figure()
+
+    # Horizontale Linien (Stiele)
+    for i, (cls, val) in enumerate(zip(classes, values)):
+        color = COLOR_GOOD if val >= 50 else COLOR_BAD
+        fig.add_shape(
+            type="line",
+            x0=0, x1=val, y0=cls, y1=cls,
+            line=dict(color=color, width=3),
+        )
+
+    # Punkte am Ende
+    colors = [COLOR_GOOD if v >= 50 else COLOR_BAD for v in values]
+    hover_texts = [
+        f"{cls}: {val:.0f}% vollständig – {miss} Psets fehlen"
+        for cls, val, miss in zip(classes, values, missing_counts)
+    ]
+
+    fig.add_trace(go.Scatter(
+        x=values,
+        y=classes,
+        mode="markers+text",
+        marker=dict(
+            size=18,
+            color=colors,
+            line=dict(color="white", width=2),
+        ),
+        text=[f"{v:.0f}%" for v in values],
+        textposition="middle right",
+        textfont=dict(size=12, color="#2D2D2D", family="Inter, sans-serif"),
+        hovertext=hover_texts,
+        hoverinfo="text",
+        customdata=list(zip(classes, values, missing_counts)),
+    ))
+
+    # 50%-Schwelle
+    fig.add_vline(
+        x=50, line_dash="dash", line_color="#999999", line_width=1.5,
+        annotation_text="50% Schwelle",
+        annotation_position="top right",
+        annotation_font=dict(size=11, color="#999999"),
+    )
+
+    fig.update_layout(
+        title=dict(
+            text="Pset-Vollständigkeit nach IFC-Klasse<br>"
+                 "<span style='font-size:12px;color:#888'>Orange = unter 50% (kritisch) | Blau = über 50%</span>",
+            font=dict(size=14, color=COLORS["text"], family="Inter, sans-serif"),
+            x=0, xanchor="left",
+        ),
+        xaxis=dict(
+            title="Vollständigkeit",
+            range=[0, 110],
+            ticksuffix="%",
+            showgrid=True,
+            gridcolor="#EAEAEA",
+            zeroline=False,
+            tickfont=dict(size=12, color=COLORS["text_light"]),
+        ),
+        yaxis=dict(
+            title="",
+            tickfont=dict(size=12, color=COLORS["text"]),
+            autorange="reversed",
+        ),
+        paper_bgcolor="white",
+        plot_bgcolor="#F5F5F5",
+        showlegend=False,
+        margin=dict(l=10, r=40, t=70, b=40),
+        hoverlabel=dict(bgcolor="white", font_size=12, font_family="Inter, sans-serif"),
+    )
+
+    return fig
+

@@ -1,63 +1,208 @@
 import pandas as pd
 import numpy as np
 import re
+from src.constants import USAGE_MULTIPLIERS
 
 # ── Aliases: ordered specific → general ──────────────────────────────────────
 # Each entry: (list of substrings that trigger this key, material_key)
 # First match wins → put specific patterns BEFORE general ones
 MATERIAL_ALIASES = [
     # Concrete variants
-    (["stahlbeton", "beton armiert", "beton bewehrt", "reinforced concrete", "rc beton", "stahlbet"], "reinforced_concrete"),
-    (["leichtbeton", "lightweight concrete", "porenbeton", "ytong", "gasbeton"], "concrete_lightweight"),
+    (
+        [
+            "stahlbeton",
+            "beton armiert",
+            "beton bewehrt",
+            "reinforced concrete",
+            "rc beton",
+            "stahlbet",
+        ],
+        "reinforced_concrete",
+    ),
+    (
+        ["leichtbeton", "lightweight concrete", "porenbeton", "ytong", "gasbeton"],
+        "concrete_lightweight",
+    ),
     (["betonfertigteil", "betonstein", "precast", "fertigteil"], "precast_concrete"),
     (["beton", "concrete", "sichtbeton", "ortbeton", "fundament"], "concrete"),
     # Wood – Laubholz (spezifischer) vor Nadelholz
     (["laubholz", "hardwood", "buche", "eiche", "esche", "ahorn"], "wood_hardwood"),
     # Holzwerkstoffe & Plattenwerkstoffe → Nadelholz als Annäherung
-    (["vollholz", "sperrholz", "osb", "holzplatte", "furnierplatte", "multiplex",
-      "brettschichtholz", "bsh", "brettsperrholz", "clt", "kreuzlagenholz",
-      "holzwerkstoff", "holzbalken", "holzst\u00e4nder", "holzrahmen",
-      "holz fassade", "holzfassade", "fassade holz", "holzverkleidung",
-      "holzdielen", "parkett", "dielenboden",
-      "nadelholz", "softwood", "fichte", "tanne", "kiefer", "l\u00e4rche", "f\u00f6hre", "holz", "wood"], "wood_softwood"),
+    (
+        [
+            "vollholz",
+            "sperrholz",
+            "osb",
+            "holzplatte",
+            "furnierplatte",
+            "multiplex",
+            "brettschichtholz",
+            "bsh",
+            "brettsperrholz",
+            "clt",
+            "kreuzlagenholz",
+            "holzwerkstoff",
+            "holzbalken",
+            "holzst\u00e4nder",
+            "holzrahmen",
+            "holz fassade",
+            "holzfassade",
+            "fassade holz",
+            "holzverkleidung",
+            "holzdielen",
+            "parkett",
+            "dielenboden",
+            "nadelholz",
+            "softwood",
+            "fichte",
+            "tanne",
+            "kiefer",
+            "l\u00e4rche",
+            "f\u00f6hre",
+            "holz",
+            "wood",
+        ],
+        "wood_softwood",
+    ),
     # Masonry
-    (["backstein", "backsteinmauerwerk", "ziegel", "ziegelmauerwerk", "mauerziegel", "backsteinziegel"], "brick"),
-    (["mauerwerk", "natursteinmauerwerk", "kalksandstein", "ks stein", "poroton"], "brick"),
+    (
+        [
+            "backstein",
+            "backsteinmauerwerk",
+            "ziegel",
+            "ziegelmauerwerk",
+            "mauerziegel",
+            "backsteinziegel",
+        ],
+        "brick",
+    ),
+    (
+        ["mauerwerk", "natursteinmauerwerk", "kalksandstein", "ks stein", "poroton"],
+        "brick",
+    ),
     # Insulation – EPS vor PUR vor Mineralwolle (spezifisch → allgemein)
-    (["eps", "styropor", "polystyrol expandiert", "xps", "extrudiertes polystyrol"], "insulation_eps"),
+    (
+        ["eps", "styropor", "polystyrol expandiert", "xps", "extrudiertes polystyrol"],
+        "insulation_eps",
+    ),
     (["pur", "pir", "polyurethan"], "insulation_pur"),
-    (["mineralwolle", "steinwolle", "glaswolle", "mineral wool",
-      "w\u00e4rmed\u00e4mmung", "d\u00e4mmung", "d\u00e4mmstoff", "isolation",
-      "d\u00e4mm", "isol", "thermodach", "aufsparrd\u00e4mmung"], "insulation_mineral"),
+    (
+        [
+            "mineralwolle",
+            "steinwolle",
+            "glaswolle",
+            "mineral wool",
+            "w\u00e4rmed\u00e4mmung",
+            "d\u00e4mmung",
+            "d\u00e4mmstoff",
+            "isolation",
+            "d\u00e4mm",
+            "isol",
+            "thermodach",
+            "aufsparrd\u00e4mmung",
+        ],
+        "insulation_mineral",
+    ),
     # Steel / Metal
-    (["stahl", "steel", "eisen", "iron", "metal", "metall", "tr\u00e4ger", "blech", "stahlprofil",
-      "hohlprofil", "i-profil", "hea", "heb", "ipe", "rhs", "chs"], "steel"),
+    (
+        [
+            "stahl",
+            "steel",
+            "eisen",
+            "iron",
+            "metal",
+            "metall",
+            "tr\u00e4ger",
+            "blech",
+            "stahlprofil",
+            "hohlprofil",
+            "i-profil",
+            "hea",
+            "heb",
+            "ipe",
+            "rhs",
+            "chs",
+        ],
+        "steel",
+    ),
     (["aluminium", "aluminum", "alu "], "aluminum"),
     (["kupfer", "copper"], "copper"),
     (["zink", "zinc"], "zinc"),
     (["blei", "lead"], "lead"),
     # Glass
-    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg", "dreifachverglasung", "zweifachverglasung"], "glass"),
+    (
+        [
+            "glas",
+            "glass",
+            "verglasung",
+            "isolierglas",
+            "esg",
+            "vsg",
+            "dreifachverglasung",
+            "zweifachverglasung",
+        ],
+        "glass",
+    ),
     # Gypsum / plaster
     (["gipskarton", "gipsplatte", "rigips", "knauf"], "gypsum_board"),
     (["gips", "gypsum"], "gypsum"),
-    (["verputz", "putz", "plaster", "rabitz", "bekleidung", "aussenputz", "innenputz", "kellenputz"], "plaster"),
+    (
+        [
+            "verputz",
+            "putz",
+            "plaster",
+            "rabitz",
+            "bekleidung",
+            "aussenputz",
+            "innenputz",
+            "kellenputz",
+        ],
+        "plaster",
+    ),
     # Screed / mortar – Estrich vor Mörtel
-    (["estrich", "unterlagsboden", "anhydrit", "zementestrich", "heizestrich"], "mortar"),
+    (
+        ["estrich", "unterlagsboden", "anhydrit", "zementestrich", "heizestrich"],
+        "mortar",
+    ),
     (["m\u00f6rtel", "mortar", "fugm\u00f6rtel", "d\u00fcnnbettm\u00f6rtel"], "mortar"),
     # Waterproofing / membranes
-    (["folie", "epdm", "abdichtungsbahn", "dampfsperre", "dampfbremse",
-      "feuchtigkeitssperre", "bitumenbahn", "schweissbahn"], "bitumen"),
+    (
+        [
+            "folie",
+            "epdm",
+            "abdichtungsbahn",
+            "dampfsperre",
+            "dampfbremse",
+            "feuchtigkeitssperre",
+            "bitumenbahn",
+            "schweissbahn",
+        ],
+        "bitumen",
+    ),
     (["bitumen", "dachpappe", "abdichtung"], "bitumen"),
     # Facade panels
-    (["fassadenplatte", "faserzementplatte", "hpl", "trespa", "eternit panel",
-      "sandwichpanel", "sandwich panel", "fassadenverkleidung"], "fibre_cement"),
+    (
+        [
+            "fassadenplatte",
+            "faserzementplatte",
+            "hpl",
+            "trespa",
+            "eternit panel",
+            "sandwichpanel",
+            "sandwich panel",
+            "fassadenverkleidung",
+        ],
+        "fibre_cement",
+    ),
     (["faserzement", "eternit", "fibre cement"], "fibre_cement"),
     # Stone
     (["kalkstein", "limestone"], "limestone"),
     (["sandstein", "sandstone"], "sandstone"),
     (["naturstein", "natural stone", "granit", "marmor", "schiefer"], "natural_stone"),
-    (["keramikfliesen", "fliesen", "tiles", "bodenfliesen", "wandfliesen"], "ceramic_tile"),
+    (
+        ["keramikfliesen", "fliesen", "tiles", "bodenfliesen", "wandfliesen"],
+        "ceramic_tile",
+    ),
     (["keramik", "ceramic", "terrakotta kachel"], "ceramic"),
     # Flooring
     (["linoleum", "lino"], "linoleum"),
@@ -80,11 +225,16 @@ def load_factors(csv_path: str) -> pd.DataFrame:
         df.columns = df.columns.str.strip()
         return df
     except Exception:
-        return pd.DataFrame(columns=[
-            "material_key", "material_label_de",
-            "co2e_kg_per_m3", "grey_energy_kwh_per_m3",
-            "cost_chf_per_m3", "density_kg_per_m3",
-        ])
+        return pd.DataFrame(
+            columns=[
+                "material_key",
+                "material_label_de",
+                "co2e_kg_per_m3",
+                "grey_energy_kwh_per_m3",
+                "cost_chf_per_m3",
+                "density_kg_per_m3",
+            ]
+        )
 
 
 def _normalize(s: str) -> str:
@@ -94,10 +244,11 @@ def _normalize(s: str) -> str:
     # 1. Decode ArchiCAD hex escapes like \X\E4 -> \xe4 -> ä
     def repl_x(m):
         try:
-            return bytes.fromhex(m.group(1)).decode('latin1')
+            return bytes.fromhex(m.group(1)).decode("latin1")
         except Exception:
             return m.group(0)
-    s = re.sub(r'\\X\\([0-9A-Fa-f]{2})', repl_x, s)
+
+    s = re.sub(r"\\X\\([0-9A-Fa-f]{2})", repl_x, s)
 
     # 2. Decode STEP ISO 10303 unicode escapes like \X2\00E4\X0\ -> ä
     def repl_x2(m):
@@ -105,11 +256,12 @@ def _normalize(s: str) -> str:
             hex_str = m.group(1)
             chars = []
             for i in range(0, len(hex_str), 4):
-                chars.append(chr(int(hex_str[i:i+4], 16)))
+                chars.append(chr(int(hex_str[i : i + 4], 16)))
             return "".join(chars)
         except Exception:
             return m.group(0)
-    s = re.sub(r'\\X2\\([0-9A-Fa-f]{4,})\\X0\\', repl_x2, s)
+
+    s = re.sub(r"\\X2\\([0-9A-Fa-f]{4,})\\X0\\", repl_x2, s)
 
     s = s.lower()
     s = re.sub(r"[_\-/\\|,;:()]", " ", s)
@@ -117,9 +269,12 @@ def _normalize(s: str) -> str:
     return s.strip()
 
 
-
 def _match_material(material_name: str, factors_df: pd.DataFrame):
-    if factors_df.empty or not material_name or str(material_name).strip() in ("", "nan"):
+    if (
+        factors_df.empty
+        or not material_name
+        or str(material_name).strip() in ("", "nan")
+    ):
         return None
 
     normalized = _normalize(material_name)
@@ -153,7 +308,9 @@ def _match_material(material_name: str, factors_df: pd.DataFrame):
     return None
 
 
-def calculate_impacts(element_df: pd.DataFrame, factors_df: pd.DataFrame) -> pd.DataFrame:
+def calculate_impacts(
+    element_df: pd.DataFrame, factors_df: pd.DataFrame
+) -> pd.DataFrame:
     if element_df.empty:
         return element_df
 
@@ -162,27 +319,29 @@ def calculate_impacts(element_df: pd.DataFrame, factors_df: pd.DataFrame) -> pd.
 
     for _, row in df.iterrows():
         # ── 1. Use embedded ArchiCAD values if available (primary source) ──
-        co2_archicad    = row.get("co2e_archicad")
+        co2_archicad = row.get("co2e_archicad")
         energy_archicad = row.get("grey_energy_archicad")
 
-        co2_val    = _to_float(co2_archicad)
+        co2_val = _to_float(co2_archicad)
         energy_val = _to_float(energy_archicad)
-        cost_val   = None  # ArchiCAD does not embed cost → always use KBOB
+        cost_val = None  # ArchiCAD does not embed cost → always use KBOB
 
         # ── 2. KBOB fallback for missing values ────────────────────────────
         if co2_val is None or energy_val is None:
             material = str(row.get("material", "Unbekannt"))
-            volume   = row.get("volume_m3")
-            factor   = _match_material(material, factors_df)
+            volume = row.get("volume_m3")
+            factor = _match_material(material, factors_df)
 
             if factor is not None and volume is not None:
                 try:
                     vol = float(volume)
                     if not np.isnan(vol) and vol > 0:
                         if co2_val is None:
-                            co2_val    = _safe_mul(factor.get("co2e_kg_per_m3"), vol)
+                            co2_val = _safe_mul(factor.get("co2e_kg_per_m3"), vol)
                         if energy_val is None:
-                            energy_val = _safe_mul(factor.get("grey_energy_kwh_per_m3"), vol)
+                            energy_val = _safe_mul(
+                                factor.get("grey_energy_kwh_per_m3"), vol
+                            )
                         cost_val = _safe_mul(factor.get("cost_chf_per_m3"), vol)
                 except Exception:
                     pass
@@ -191,9 +350,9 @@ def calculate_impacts(element_df: pd.DataFrame, factors_df: pd.DataFrame) -> pd.
         energy_list.append(energy_val)
         cost_list.append(cost_val)
 
-    df["co2e_total"]      = co2_list
+    df["co2e_total"] = co2_list
     df["grey_energy_kwh"] = energy_list
-    df["cost_chf"]        = cost_list
+    df["cost_chf"] = cost_list
     return df
 
 
@@ -213,7 +372,9 @@ def get_unmatched_materials(element_df: pd.DataFrame) -> list:
     return sorted(element_df.loc[mask, "material"].dropna().unique().tolist())
 
 
-def get_impact_summary(impact_df: pd.DataFrame, space_df: pd.DataFrame, mode: str) -> dict:
+def get_impact_summary(
+    impact_df: pd.DataFrame, space_df: pd.DataFrame, mode: str
+) -> dict:
     summary = {
         "co2e_total": 0.0,
         "grey_energy_total": 0.0,
@@ -227,26 +388,32 @@ def get_impact_summary(impact_df: pd.DataFrame, space_df: pd.DataFrame, mode: st
     if impact_df.empty:
         return summary
 
-    co2_vals    = pd.to_numeric(impact_df["co2e_total"], errors="coerce")
-    energy_vals = pd.to_numeric(impact_df.get("grey_energy_kwh", pd.Series(dtype=float)), errors="coerce")
-    cost_vals   = pd.to_numeric(impact_df.get("cost_chf", pd.Series(dtype=float)), errors="coerce")
+    co2_vals = pd.to_numeric(impact_df["co2e_total"], errors="coerce")
+    energy_vals = pd.to_numeric(
+        impact_df.get("grey_energy_kwh", pd.Series(dtype=float)), errors="coerce"
+    )
+    cost_vals = pd.to_numeric(
+        impact_df.get("cost_chf", pd.Series(dtype=float)), errors="coerce"
+    )
 
-    summary["co2e_total"]        = float(co2_vals.sum(skipna=True))
+    summary["co2e_total"] = float(co2_vals.sum(skipna=True))
     summary["grey_energy_total"] = float(energy_vals.sum(skipna=True))
-    summary["cost_total"]        = float(cost_vals.sum(skipna=True))
+    summary["cost_total"] = float(cost_vals.sum(skipna=True))
 
     matched = co2_vals.notna().sum()
-    total   = len(impact_df)
+    total = len(impact_df)
     summary["coverage_pct"] = (matched / total * 100) if total > 0 else 0.0
 
     ngf = 0.0
     if space_df is not None and not space_df.empty and "area_m2" in space_df.columns:
-        ngf = float(pd.to_numeric(space_df["area_m2"], errors="coerce").sum(skipna=True))
+        ngf = float(
+            pd.to_numeric(space_df["area_m2"], errors="coerce").sum(skipna=True)
+        )
 
     if ngf > 0:
-        summary["co2e_per_m2"]    = summary["co2e_total"] / ngf
-        summary["cost_per_m2"]    = summary["cost_total"] / ngf
-        summary["energy_per_m2"]  = summary["grey_energy_total"] / ngf
+        summary["co2e_per_m2"] = summary["co2e_total"] / ngf
+        summary["cost_per_m2"] = summary["cost_total"] / ngf
+        summary["energy_per_m2"] = summary["grey_energy_total"] / ngf
 
     return summary
 
@@ -264,14 +431,18 @@ def _to_float(val) -> float | None:
 
 def _safe_mul(factor_val, volume: float):
     try:
-        if factor_val is None or (isinstance(factor_val, float) and np.isnan(factor_val)):
+        if factor_val is None or (
+            isinstance(factor_val, float) and np.isnan(factor_val)
+        ):
             return None
         return float(factor_val) * volume
     except Exception:
         return None
 
 
-def calculate_room_co2_loads(space_df: pd.DataFrame, element_df: pd.DataFrame) -> pd.DataFrame:
+def calculate_room_co2_loads(
+    space_df: pd.DataFrame, element_df: pd.DataFrame
+) -> pd.DataFrame:
     """Estimates CO2 load per room based on area, storey element CO2, and usage type multipliers."""
     if space_df is None or space_df.empty:
         return pd.DataFrame()
@@ -280,25 +451,20 @@ def calculate_room_co2_loads(space_df: pd.DataFrame, element_df: pd.DataFrame) -
 
     # 1. Total CO2 per storey from element_df
     storey_co2 = {}
-    if element_df is not None and not element_df.empty and "co2e_total" in element_df.columns:
-        element_df["co2e_numeric"] = pd.to_numeric(element_df["co2e_total"], errors="coerce").fillna(0)
+    if (
+        element_df is not None
+        and not element_df.empty
+        and "co2e_total" in element_df.columns
+    ):
+        element_df["co2e_numeric"] = pd.to_numeric(
+            element_df["co2e_total"], errors="coerce"
+        ).fillna(0)
         storey_co2 = element_df.groupby("storey")["co2e_numeric"].sum().to_dict()
 
     # 2. Storey NFA area
     storey_area = df.groupby("storey")["area_m2"].sum().to_dict()
 
-    # Room usage multipliers
-    USAGE_MULTIPLIERS = {
-        "technik": 2.6,
-        "wc": 1.9,
-        "büro": 1.1,
-        "wohn": 1.0,
-        "flur": 0.5,
-        "korridor": 0.5,
-        "erschliessung": 0.5,
-        "lager": 1.4,
-    }
-
+    # Distribute storey CO2 by area, multiplied by usage factor
     co2_loads = []
     for _, row in df.iterrows():
         area = row.get("area_m2", 0)
@@ -325,7 +491,9 @@ def calculate_room_co2_loads(space_df: pd.DataFrame, element_df: pd.DataFrame) -
             space_id_num = 0
             if "space_id" in row:
                 try:
-                    space_id_num = int("".join(c for c in str(row["space_id"]) if c.isdigit()))
+                    space_id_num = int(
+                        "".join(c for c in str(row["space_id"]) if c.isdigit())
+                    )
                 except ValueError:
                     space_id_num = hash(str(row["space_id"]))
             variance = 0.85 + 0.3 * ((space_id_num % 100) / 100.0)
@@ -335,7 +503,9 @@ def calculate_room_co2_loads(space_df: pd.DataFrame, element_df: pd.DataFrame) -
             space_id_num = 0
             if "space_id" in row:
                 try:
-                    space_id_num = int("".join(c for c in str(row["space_id"]) if c.isdigit()))
+                    space_id_num = int(
+                        "".join(c for c in str(row["space_id"]) if c.isdigit())
+                    )
                 except ValueError:
                     space_id_num = hash(str(row["space_id"]))
             variance = 0.85 + 0.3 * ((space_id_num % 100) / 100.0)

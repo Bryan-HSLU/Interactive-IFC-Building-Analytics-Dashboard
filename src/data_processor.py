@@ -2,36 +2,44 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-
 STATUS_MAP = {
-    "new": "Neubau", "neu": "Neubau", "neubau": "Neubau",
-    "existing": "Bestand", "bestand": "Bestand", "exist": "Bestand",
-    "demolished": "Abbruch", "abbruch": "Abbruch", "r\u00fcckbau": "Abbruch",
-    "demolish": "Abbruch", "demo": "Abbruch",
-    "temporary": "Tempor\u00e4r", "tempor\u00e4r": "Tempor\u00e4r", "temp": "Tempor\u00e4r",
+    "new": "Neubau",
+    "neu": "Neubau",
+    "neubau": "Neubau",
+    "existing": "Bestand",
+    "bestand": "Bestand",
+    "exist": "Bestand",
+    "demolished": "Abbruch",
+    "abbruch": "Abbruch",
+    "r\u00fcckbau": "Abbruch",
+    "demolish": "Abbruch",
+    "demo": "Abbruch",
+    "temporary": "Tempor\u00e4r",
+    "tempor\u00e4r": "Tempor\u00e4r",
+    "temp": "Tempor\u00e4r",
 }
 
 # Default thickness in metres per IFC class — used when volume_m3 is missing
 DEFAULT_THICKNESS = {
-    "IfcWall":                  0.25,
-    "IfcWallStandardCase":      0.25,
-    "IfcSlab":                  0.20,
-    "IfcRoof":                  0.20,
-    "IfcColumn":                0.30,
-    "IfcBeam":                  0.20,
-    "IfcCovering":              0.02,
-    "IfcPlate":                 0.01,
-    "IfcMember":                0.10,
-    "IfcCurtainWall":           0.10,
-    "IfcDoor":                  0.05,
-    "IfcWindow":                0.02,
-    "IfcStair":                 0.20,
-    "IfcStairFlight":           0.20,
-    "IfcRailing":               0.05,
-    "IfcBuildingElementProxy":  0.10,
-    "IfcFlowSegment":           0.05,
-    "IfcFlowTerminal":          0.05,
-    "IfcFlowFitting":           0.05,
+    "IfcWall": 0.25,
+    "IfcWallStandardCase": 0.25,
+    "IfcSlab": 0.20,
+    "IfcRoof": 0.20,
+    "IfcColumn": 0.30,
+    "IfcBeam": 0.20,
+    "IfcCovering": 0.02,
+    "IfcPlate": 0.01,
+    "IfcMember": 0.10,
+    "IfcCurtainWall": 0.10,
+    "IfcDoor": 0.05,
+    "IfcWindow": 0.02,
+    "IfcStair": 0.20,
+    "IfcStairFlight": 0.20,
+    "IfcRailing": 0.05,
+    "IfcBuildingElementProxy": 0.10,
+    "IfcFlowSegment": 0.05,
+    "IfcFlowTerminal": 0.05,
+    "IfcFlowFitting": 0.05,
     "IfcEnergyConversionDevice": 0.10,
 }
 DEFAULT_THICKNESS_FALLBACK = 0.15
@@ -43,7 +51,9 @@ def build_element_df(parsed_data: dict, mode: str, pset_config: dict) -> pd.Data
         return pd.DataFrame()
 
     df = pd.DataFrame(elements)
-    df = assign_status(df, mode, pset_config.get("pset_name", ""), pset_config.get("pset_property", ""))
+    df = assign_status(
+        df, mode, pset_config.get("pset_name", ""), pset_config.get("pset_property", "")
+    )
     df = normalize_materials(df)
     df = calculate_missing_quantities(df)
 
@@ -66,7 +76,9 @@ def build_space_df(parsed_data: dict) -> pd.DataFrame:
     return df
 
 
-def assign_status(df: pd.DataFrame, mode: str, pset_name: str, property_name: str) -> pd.DataFrame:
+def assign_status(
+    df: pd.DataFrame, mode: str, pset_name: str, property_name: str
+) -> pd.DataFrame:
     if mode == "neubau":
         df["status"] = "Neubau"
         return df
@@ -80,7 +92,11 @@ def assign_status(df: pd.DataFrame, mode: str, pset_name: str, property_name: st
             return "Nicht gefunden"
         status_value = target_pset.get(property_name)
         if status_value is None:
-            for alt_pset in ["Pset_BuildingElementCommon", "Pset_WallCommon", "Pset_SlabCommon"]:
+            for alt_pset in [
+                "Pset_BuildingElementCommon",
+                "Pset_WallCommon",
+                "Pset_SlabCommon",
+            ]:
                 alt = psets.get(alt_pset, {})
                 if isinstance(alt, dict) and "Status" in alt:
                     status_value = alt["Status"]
@@ -100,12 +116,7 @@ def normalize_materials(df: pd.DataFrame) -> pd.DataFrame:
     """
     if "material" not in df.columns:
         return df
-    df["material"] = (
-        df["material"]
-        .fillna("Unbekannt")
-        .astype(str)
-        .str.strip()
-    )
+    df["material"] = df["material"].fillna("Unbekannt").astype(str).str.strip()
     df.loc[df["material"].isin(["", "None", "nan"]), "material"] = "Unbekannt"
     return df
 
@@ -123,6 +134,7 @@ def calculate_missing_quantities(df: pd.DataFrame) -> pd.DataFrame:
     if "volume_m3" in df.columns and "area_m2" in df.columns:
         missing_vol = df["volume_m3"].isna()
         if missing_vol.any():
+
             def _estimate_vol(row):
                 area = row.get("area_m2")
                 if pd.isna(area) or area <= 0:
@@ -143,7 +155,9 @@ def calculate_missing_quantities(df: pd.DataFrame) -> pd.DataFrame:
             area = row.get("area_m2")
             if pd.isna(area) or area <= 0:
                 return np.nan
-            thickness = DEFAULT_THICKNESS.get(row.get("ifc_class", ""), DEFAULT_THICKNESS_FALLBACK)
+            thickness = DEFAULT_THICKNESS.get(
+                row.get("ifc_class", ""), DEFAULT_THICKNESS_FALLBACK
+            )
             return round(area * thickness, 4)
 
         df["volume_m3"] = df.apply(_estimate_vol_full, axis=1)

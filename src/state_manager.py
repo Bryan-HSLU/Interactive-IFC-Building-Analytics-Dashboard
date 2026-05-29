@@ -56,7 +56,11 @@ def init_session_state():
 
 def store_parsed_data(parsed_data: dict, mode: str, pset_config: dict):
     from src.data_processor import build_element_df, build_space_df
-    from src.impact_calculator import load_factors, calculate_impacts, calculate_room_co2_loads
+    from src.impact_calculator import (
+        load_factors,
+        calculate_impacts,
+        calculate_room_co2_loads,
+    )
     from src.quality_checker import check_quality, calculate_quality_score
 
     element_df = build_element_df(parsed_data, mode, pset_config)

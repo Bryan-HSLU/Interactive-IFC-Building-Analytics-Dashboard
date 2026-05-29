@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
-from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
+from src.state_manager import (
+    init_session_state,
+    get_element_df,
+    get_space_df,
+    get_quality_data,
+)
 from src.filters import render_sidebar
 from src.chart_factory import create_room_treemap
 from src.constants import COLORS
@@ -31,11 +36,24 @@ st.caption("Schneller Überblick und räumliche NFA-Verteilung des Gebäudes.")
 
 # ── 1️⃣ KPI Cards: "Wie gross ist das Gebäude insgesamt – und was enthält es?" ──
 
-total_area = space_df["area_m2"].sum() if has_spaces and "area_m2" in space_df.columns else 0.0
+total_area = (
+    space_df["area_m2"].sum() if has_spaces and "area_m2" in space_df.columns else 0.0
+)
 room_count = len(space_df) if has_spaces else 0
-window_count = int((element_df["ifc_class"].isin(["IfcWindow", "IfcCurtainWall"])).sum()) if element_df is not None else 0
-door_count = int((element_df["ifc_class"] == "IfcDoor").sum()) if element_df is not None else 0
-total_co2 = pd.to_numeric(element_df["co2e_total"], errors="coerce").sum() if element_df is not None and "co2e_total" in element_df.columns else 0.0
+window_count = (
+    int((element_df["ifc_class"].isin(["IfcWindow", "IfcCurtainWall"])).sum())
+    if element_df is not None
+    else 0
+)
+door_count = (
+    int((element_df["ifc_class"] == "IfcDoor").sum()) if element_df is not None else 0
+)
+total_co2 = (
+    pd.to_numeric(element_df["co2e_total"], errors="coerce").sum()
+    if element_df is not None and "co2e_total" in element_df.columns
+    else 0.0
+)
+
 
 def render_kpi(label: str, value: str):
     st.markdown(
@@ -43,9 +61,10 @@ def render_kpi(label: str, value: str):
         f'padding: 12px 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 12px; text-align: center;">'
         f'<div style="font-size: 0.8rem; color: #8B8B8B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{label}</div>'
         f'<div style="font-size: 1.65rem; font-weight: 700; color: #2D2D2D; margin-top: 4px; white-space: nowrap;">{value}</div>'
-        f'</div>',
-        unsafe_allow_html=True
+        f"</div>",
+        unsafe_allow_html=True,
     )
+
 
 # Custom column weights to give wider cards (like Gesamtfläche and Total CO2) more horizontal room
 kcols = st.columns([1.3, 1.2, 0.8, 0.8, 1.1])
@@ -65,12 +84,16 @@ st.divider()
 # ── 2️⃣ Treemap: "Welcher Raumtyp nimmt wie viel Fläche ein?" ──────────────────
 
 st.subheader("Räumliche Flächenverteilung")
-st.caption("Proportionen der Raumtypen nach Netto-Geschossfläche (NFA). Klicken Sie auf einen Typ, um andere Seiten zu filtern.")
+st.caption(
+    "Proportionen der Raumtypen nach Netto-Geschossfläche (NFA). Klicken Sie auf einen Typ, um andere Seiten zu filtern."
+)
 
 if has_spaces:
     fig_tree = create_room_treemap(space_df)
-    ev_tree = st.plotly_chart(fig_tree, on_select="rerun", key="ov_treemap", use_container_width=True)
-    
+    ev_tree = st.plotly_chart(
+        fig_tree, on_select="rerun", key="ov_treemap", use_container_width=True
+    )
+
     # Master filter logic — only act when the clicked type DIFFERS from
     # the current filter to prevent infinite rerun loops.
     if ev_tree and ev_tree.selection and ev_tree.selection.points:
@@ -88,4 +111,6 @@ if has_spaces:
                     st.session_state.cf_page3_usage = clicked_clean
                     st.rerun()
 else:
-    st.info("Dieses Modell enthält keine Räume (IfcSpace) für eine Treemap-Flächenverteilung.")
+    st.info(
+        "Dieses Modell enthält keine Räume (IfcSpace) für eine Treemap-Flächenverteilung."
+    )

@@ -4,32 +4,17 @@ import pandas as pd
 import numpy as np
 import re
 import streamlit as st
-from src.constants import COLORS, STATUS_COLORS, ROOM_COLORS, MATERIAL_COLORS, CO2_SCALE
-
-# Semantic material groups with fixed colors (harmoneous shades of orange with Andere as gray)
-_MATERIAL_GROUP_RULES = [
-    (["beton", "concrete", "stahlbeton", "fundament", "ortbeton", "sichtbeton", "fertigteil"], "Beton"),
-    (["holz", "wood", "nadelholz", "laubholz", "fichte", "tanne", "buche", "eiche", "lärche"], "Holz"),
-    (["stahl", "steel", "eisen", "metall", "metal", "aluminium", "alu", "kupfer", "zink", "blech", "träger"], "Metall"),
-    (["dämmung", "dämm", "isolation", "mineralwolle", "steinwolle", "glaswolle", "eps", "pur", "pir", "styropor", "wärmedämm"], "Dämmung"),
-    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg"], "Glas"),
-]
-
-_MATERIAL_GROUP_COLORS = {
-    "Holz":    "#D35400",  # Warmes Rost-Orange (Dunkel)
-    "Beton":   "#E67E22",  # Leuchtendes Orange
-    "Metall":  "#F39C12",  # Edles Amber-Orange
-    "Dämmung": "#F5B041",  # Weiches Sonnen-Orange
-    "Glas":    "#F8C471",  # Helles Pfirsich-Orange
-    "Andere":  "#BDC3C7",  # Neutrales Hellgrau
-}
-
-_HOLZ_TRIGGERS = [
-    "vollholz", "holzwerkstoff", "holz balken", "holzbalken",
-    "holz fassade", "holzfassade", "fassade holz",
-    "holz", "wood", "nadelholz", "laubholz",
-    "fichte", "tanne", "buche", "eiche", "lärche", "föhre",
-]
+from src.constants import (
+    COLORS,
+    STATUS_COLORS,
+    ROOM_COLORS,
+    MATERIAL_COLORS,
+    CO2_SCALE,
+    MATERIAL_GROUP_RULES as _MATERIAL_GROUP_RULES,
+    MATERIAL_GROUP_COLORS as _MATERIAL_GROUP_COLORS,
+    HOLZ_TRIGGERS as _HOLZ_TRIGGERS,
+    RAUM_GRUPPEN,
+)
 
 
 def _classify_material_group(material_name: str) -> str:
@@ -46,12 +31,16 @@ def apply_default_layout(fig: go.Figure, title: str = None) -> go.Figure:
     fig.update_layout(
         template="plotly_white",
         font=dict(family="Inter, sans-serif", size=12, color=COLORS["text"]),
-        title=dict(
-            text=title,
-            font=dict(size=14, color=COLORS["text"]),
-            x=0,
-            xanchor="left",
-        ) if title else None,
+        title=(
+            dict(
+                text=title,
+                font=dict(size=14, color=COLORS["text"]),
+                x=0,
+                xanchor="left",
+            )
+            if title
+            else None
+        ),
         margin=dict(l=50, r=20, t=50 if title else 20, b=50),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -65,16 +54,28 @@ def apply_default_layout(fig: go.Figure, title: str = None) -> go.Figure:
         ),
         hoverlabel=dict(bgcolor="white", font_size=12, font_family="Inter, sans-serif"),
     )
-    fig.update_xaxes(gridcolor=COLORS["grid"], gridwidth=1, tickfont=dict(size=11, color=COLORS["text_light"]))
-    fig.update_yaxes(gridcolor=COLORS["grid"], gridwidth=1, tickfont=dict(size=11, color=COLORS["text_light"]))
+    fig.update_xaxes(
+        gridcolor=COLORS["grid"],
+        gridwidth=1,
+        tickfont=dict(size=11, color=COLORS["text_light"]),
+    )
+    fig.update_yaxes(
+        gridcolor=COLORS["grid"],
+        gridwidth=1,
+        tickfont=dict(size=11, color=COLORS["text_light"]),
+    )
     return fig
 
 
 def _empty_fig(message: str) -> go.Figure:
     fig = go.Figure()
     fig.add_annotation(
-        text=message, xref="paper", yref="paper",
-        x=0.5, y=0.5, showarrow=False,
+        text=message,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
         font=dict(size=14, color=COLORS["text_light"]),
     )
     fig.update_layout(
@@ -88,6 +89,7 @@ def _empty_fig(message: str) -> go.Figure:
 
 
 # ── Helper to resolve consistent Room Colors ─────────────────────────────────
+
 
 def _get_room_color(usage: str, force_orange: bool = False) -> str:
     usage_lower = str(usage).lower().strip()
@@ -117,6 +119,7 @@ def _get_room_color(usage: str, force_orange: bool = False) -> str:
 
 # ── Treemap: "Welcher Raumtyp nimmt wie viel Fläche ein?" ──────────────────
 
+
 def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
     if space_df.empty or "area_m2" not in space_df.columns:
         return _empty_fig("Keine Raumdaten für Treemap verfügbar")
@@ -138,7 +141,7 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
         agg = pd.concat([top, rest_row], ignore_index=True)
 
     cf_usage = st.session_state.get("cf_page3_usage")
-    force_orange = (cf_usage == "Gesamt")
+    force_orange = cf_usage == "Gesamt"
 
     labels = ["<b>Gesamt</b>"]
     parents = [""]
@@ -151,23 +154,26 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
         values.append(row["area_m2"])
         colors.append(_get_room_color(row["usage"], force_orange))
 
-    fig = go.Figure(go.Treemap(
-        labels=labels,
-        parents=parents,
-        values=values,
-        branchvalues="total",
-        textinfo="label+value",
-        texttemplate="<b>%{label}</b><br>%{value:.1f} m²",
-        hovertemplate="<b>%{label}</b><br>Fläche: %{value:.1f} m²<br>Anteil: %{percentRoot:.1%}<extra></extra>",
-        marker=dict(colors=colors, colorscale=None),
-        textfont=dict(size=14, family="Inter, sans-serif"),
-    ))
+    fig = go.Figure(
+        go.Treemap(
+            labels=labels,
+            parents=parents,
+            values=values,
+            branchvalues="total",
+            textinfo="label+value",
+            texttemplate="<b>%{label}</b><br>%{value:.1f} m²",
+            hovertemplate="<b>%{label}</b><br>Fläche: %{value:.1f} m²<br>Anteil: %{percentRoot:.1%}<extra></extra>",
+            marker=dict(colors=colors, colorscale=None),
+            textfont=dict(size=14, family="Inter, sans-serif"),
+        )
+    )
     apply_default_layout(fig, "Raumfläche nach Nutzungstyp (NFA)")
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))
     return fig
 
 
 # ── Horizontal Bar Chart: "Welche Materialien sind verbaut?" ────────────────
+
 
 def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> go.Figure:
     if element_df.empty:
@@ -197,15 +203,17 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
 
     colors = [_MATERIAL_GROUP_COLORS.get(m, "#BDC3C7") for m in agg["material"]]
 
-    fig = go.Figure(go.Bar(
-        x=agg["quantity"],
-        y=agg["material"],
-        orientation="h",
-        marker_color=colors,
-        text=[f"{v:,.1f}" for v in agg["quantity"]],
-        textposition="outside",
-        hovertemplate=f"<b>%{{y}}</b><br>Menge: %{{x:.1f}} {unit}<extra></extra>",
-    ))
+    fig = go.Figure(
+        go.Bar(
+            x=agg["quantity"],
+            y=agg["material"],
+            orientation="h",
+            marker_color=colors,
+            text=[f"{v:,.1f}" for v in agg["quantity"]],
+            textposition="outside",
+            hovertemplate=f"<b>%{{y}}</b><br>Menge: %{{x:.1f}} {unit}<extra></extra>",
+        )
+    )
 
     if not main_rows.empty and total_volume > 0:
         max_row = main_rows.loc[main_rows["quantity"].idxmax()]
@@ -214,12 +222,18 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
         pct = (max_qty / total_volume) * 100
 
         fig.add_annotation(
-            x=max_qty, y=max_material,
+            x=max_qty,
+            y=max_material,
             text=f"macht {pct:.1f}% des Gesamtvolumens aus",
             showarrow=False,
-            xanchor="left", xshift=65,
+            xanchor="left",
+            xshift=65,
             font=dict(size=11, color="#2D2D2D", family="Inter, sans-serif"),
-            bgcolor="#FDEDEC", bordercolor="#FADBD8", borderwidth=1, borderpad=4, align="left",
+            bgcolor="#FDEDEC",
+            bordercolor="#FADBD8",
+            borderwidth=1,
+            borderpad=4,
+            align="left",
         )
 
     apply_default_layout(fig, f"Materialmengen im Gebäude ({unit})")
@@ -228,9 +242,13 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
         title=dict(
             text=f"Materialmengen im Gebäude ({unit})",
             font=dict(size=14, color=COLORS["text"]),
-            x=0.0, y=0.98, yanchor="top", xanchor="left",
+            x=0.0,
+            y=0.98,
+            yanchor="top",
+            xanchor="left",
         ),
-        xaxis_title=unit, yaxis_title="",
+        xaxis_title=unit,
+        yaxis_title="",
         xaxis=dict(range=[0, max_val * 1.55]),
         margin=dict(t=80),
     )
@@ -238,6 +256,7 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
 
 
 # ── Horizontal Bar Chart: "Welches Material verursacht am meisten CO2?" ─────
+
 
 def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
     if element_df.empty or "co2e_total" not in element_df.columns:
@@ -299,19 +318,30 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
             b = int(66 + t * (61 - 66))
         colors.append(f"rgb({r},{g},{b})")
 
-    final_colors = ["#BDC3C7" if mat == "Andere" else col for mat, col in zip(agg["material"].tolist(), colors)]
+    final_colors = [
+        "#BDC3C7" if mat == "Andere" else col
+        for mat, col in zip(agg["material"].tolist(), colors)
+    ]
 
-    fig = go.Figure(go.Bar(
-        x=agg["co2"], y=agg["material"], orientation="h",
-        marker_color=final_colors,
-        text=[f"{v:,.0f} kg" for v in agg["co2"]],
-        textposition="outside",
-        hovertemplate="<b>%{y}</b><br>CO₂e-Last: %{x:,.0f} kg<extra></extra>",
-    ))
+    fig = go.Figure(
+        go.Bar(
+            x=agg["co2"],
+            y=agg["material"],
+            orientation="h",
+            marker_color=final_colors,
+            text=[f"{v:,.0f} kg" for v in agg["co2"]],
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>CO₂e-Last: %{x:,.0f} kg<extra></extra>",
+        )
+    )
 
     fig.add_vline(
-        x=avg_val, line_dash="dash", line_color=COLORS["text_light"], line_width=1.5,
-        annotation_text="⌀ Durchschnitt", annotation_position="top right",
+        x=avg_val,
+        line_dash="dash",
+        line_color=COLORS["text_light"],
+        line_width=1.5,
+        annotation_text="⌀ Durchschnitt",
+        annotation_position="top right",
         annotation_font=dict(size=11, color=COLORS["text_light"]),
     )
 
@@ -322,8 +352,13 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
 
 # ── Scatter Plot: "Gibt es Räume mit unverhältnismässig hohem CO2?" ──────────
 
+
 def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
-    if space_df.empty or "area_m2" not in space_df.columns or "co2_load" not in space_df.columns:
+    if (
+        space_df.empty
+        or "area_m2" not in space_df.columns
+        or "co2_load" not in space_df.columns
+    ):
         return _empty_fig("Keine ausreichenden Raumdaten für Scatter Plot verfügbar")
 
     df = space_df.dropna(subset=["area_m2", "co2_load"]).copy()
@@ -333,23 +368,6 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
 
     if df.empty:
         return _empty_fig("Keine quantitativen Werte für Scatter Plot")
-
-    RAUM_GRUPPEN = {
-        "Veloraum":     ("Lager/Technik",  "#5C6E7E"),
-        "Abstellkamer": ("Lager/Technik",  "#5C6E7E"),
-        "Abstellraum":  ("Lager/Technik",  "#5C6E7E"),
-        "Technik":      ("Lager/Technik",  "#5C6E7E"),
-        "Saal":         ("Aufenthalt",     "#2E86AB"),
-        "Restaurant":   ("Aufenthalt",     "#2E86AB"),
-        "Bar/Empfang":  ("Aufenthalt",     "#2E86AB"),
-        "Warteraum":    ("Aufenthalt",     "#2E86AB"),
-        "Backstage":    ("Aufenthalt",     "#2E86AB"),
-        "WC":           ("Sanitär",        "#C8A96E"),
-        "WC Damen":     ("Sanitär",        "#C8A96E"),
-        "WC Herren":    ("Sanitär",        "#C8A96E"),
-        "Treppenhaus":  ("Verkehr",        "#F0C987"),
-        "Vorraum":      ("Verkehr",        "#F0C987"),
-    }
 
     def _group_room_usage(usage: str) -> tuple[str, str]:
         usage_clean = str(usage).strip()
@@ -371,15 +389,30 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
     for usage in usages:
         sub = df[df["grouped_usage"] == usage]
         color = sub["group_color"].iloc[0]
-        names = sub["name"].astype(str).tolist() if "name" in sub.columns else ["Raum"] * len(sub)
-        fig.add_trace(go.Scatter(
-            x=sub["area_m2"], y=sub["co2_load"],
-            mode="markers", name=usage,
-            marker=dict(color=color, size=14, opacity=0.95, line=dict(width=1.5, color="#2D2D2D")),
-            text=names,
-            customdata=sub["usage"].tolist(),
-            hovertemplate="<b>%{text}</b><br>Kategorie: " + usage + "<br>Typ: %{customdata}<br>Fläche: %{x:.1f} m²<br>CO₂-Last: %{y:,.0f} kg<extra></extra>",
-        ))
+        names = (
+            sub["name"].astype(str).tolist()
+            if "name" in sub.columns
+            else ["Raum"] * len(sub)
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=sub["area_m2"],
+                y=sub["co2_load"],
+                mode="markers",
+                name=usage,
+                marker=dict(
+                    color=color,
+                    size=14,
+                    opacity=0.95,
+                    line=dict(width=1.5, color="#2D2D2D"),
+                ),
+                text=names,
+                customdata=sub["usage"].tolist(),
+                hovertemplate="<b>%{text}</b><br>Kategorie: "
+                + usage
+                + "<br>Typ: %{customdata}<br>Fläche: %{x:.1f} m²<br>CO₂-Last: %{y:,.0f} kg<extra></extra>",
+            )
+        )
 
     m, c = 0, 0
     if len(all_x) > 1:
@@ -387,11 +420,16 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
             m, c = np.polyfit(all_x, all_y, 1)
             x_range = np.linspace(min(all_x), max(all_x), 100)
             y_range = m * x_range + c
-            fig.add_trace(go.Scatter(
-                x=x_range, y=y_range, mode="lines", name="Trendlinie",
-                line=dict(color=COLORS["text_light"], width=1.5, dash="dot"),
-                hoverinfo="skip",
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=x_range,
+                    y=y_range,
+                    mode="lines",
+                    name="Trendlinie",
+                    line=dict(color=COLORS["text_light"], width=1.5, dash="dot"),
+                    hoverinfo="skip",
+                )
+            )
         except Exception:
             pass
 
@@ -400,7 +438,12 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
         for idx, row in df.iterrows():
             room_name = str(row.get("name", "")).lower()
             room_type = str(row.get("usage", "")).lower()
-            if "wc" in room_name or "wc" in room_type or "technik" in room_name or "technik" in room_type:
+            if (
+                "wc" in room_name
+                or "wc" in room_type
+                or "technik" in room_name
+                or "technik" in room_type
+            ):
                 continue
             candidates.append(row)
 
@@ -425,7 +468,17 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                 r_name = str(row.get("name", "")).lower()
                 r_type = str(row.get("usage", "")).lower()
                 area = float(row.get("area_m2", 0))
-                is_aufenthalt = any(k in r_name or k in r_type for k in ["saal", "restaurant", "bar", "empfang", "warteraum", "backstage"])
+                is_aufenthalt = any(
+                    k in r_name or k in r_type
+                    for k in [
+                        "saal",
+                        "restaurant",
+                        "bar",
+                        "empfang",
+                        "warteraum",
+                        "backstage",
+                    ]
+                )
                 if is_aufenthalt and area > 100:
                     to_annotate.append(row)
                     annotated_ids.add(row.name)
@@ -434,7 +487,10 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                 std_residual = df["residual"].std() if len(df) > 2 else 1.0
                 if pd.isna(std_residual) or std_residual <= 0:
                     std_residual = 1.0
-                rem = cand_df[(cand_df["residual"] > 1.2 * std_residual) & (~cand_df.index.isin(annotated_ids))].sort_values("residual", ascending=False)
+                rem = cand_df[
+                    (cand_df["residual"] > 1.2 * std_residual)
+                    & (~cand_df.index.isin(annotated_ids))
+                ].sort_values("residual", ascending=False)
                 for idx, row in rem.iterrows():
                     if len(to_annotate) >= 3:
                         break
@@ -448,7 +504,12 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                 ax_offset, ay_offset = 60, -40
                 r_name_lower = str(room_name).lower()
                 r_type_lower = str(room_type).lower()
-                if "bar" in r_name_lower or "empfang" in r_name_lower or "bar" in r_type_lower or "empfang" in r_type_lower:
+                if (
+                    "bar" in r_name_lower
+                    or "empfang" in r_name_lower
+                    or "bar" in r_type_lower
+                    or "empfang" in r_type_lower
+                ):
                     ax_offset, ay_offset = -40, 45
                 elif "saal" in r_name_lower or "saal" in r_type_lower:
                     ax_offset, ay_offset = -60, -40
@@ -456,34 +517,62 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                     ax_offset, ay_offset = 60, -45
 
                 fig.add_annotation(
-                    x=row["area_m2"], y=row["co2_load"],
-                    text=label_text, showarrow=True, arrowhead=2,
-                    arrowcolor="#D94F3D", arrowsize=1.0,
-                    ax=ax_offset, ay=ay_offset,
+                    x=row["area_m2"],
+                    y=row["co2_load"],
+                    text=label_text,
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowcolor="#D94F3D",
+                    arrowsize=1.0,
+                    ax=ax_offset,
+                    ay=ay_offset,
                     font=dict(size=13, color="#2D2D2D", family="Inter, sans-serif"),
                     bgcolor="rgba(253, 237, 236, 0.95)",
-                    bordercolor="#FADBD8", borderwidth=1.5, borderpad=5,
+                    bordercolor="#FADBD8",
+                    borderwidth=1.5,
+                    borderpad=5,
                 )
 
     apply_default_layout(fig, "Raumfläche vs. CO₂-Last")
     fig.update_layout(
         font=dict(size=14, family="Inter, sans-serif"),
         title=dict(font=dict(size=16, color=COLORS["text"])),
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, font=dict(size=13, color=COLORS["text"])),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.05,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=13, color=COLORS["text"]),
+        ),
         margin=dict(t=100, b=60, l=60, r=40),
     )
-    fig.update_xaxes(autorange=True, title=dict(text="Raumfläche (m²)", font=dict(size=14, color=COLORS["text"])), tickfont=dict(size=13, color=COLORS["text_light"]))
-    fig.update_yaxes(title=dict(text="CO₂-Last (kg CO₂eq)", font=dict(size=14, color=COLORS["text"])), tickfont=dict(size=13, color=COLORS["text_light"]))
+    fig.update_xaxes(
+        autorange=True,
+        title=dict(text="Raumfläche (m²)", font=dict(size=14, color=COLORS["text"])),
+        tickfont=dict(size=13, color=COLORS["text_light"]),
+    )
+    fig.update_yaxes(
+        title=dict(
+            text="CO₂-Last (kg CO₂eq)", font=dict(size=14, color=COLORS["text"])
+        ),
+        tickfont=dict(size=13, color=COLORS["text_light"]),
+    )
     return fig
 
 
 # ── Stacked Bar Chart 100%: "Bauteil-Material-Verteilung" ──────────────────
 
+
 def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
     part_order = ["Wand", "Boden", "Decke"]
     group_order = ["Beton", "Holz", "Metall", "Dämmung", "Glas", "Andere"]
 
-    if element_df.empty or "ifc_class" not in element_df.columns or "material" not in element_df.columns:
+    if (
+        element_df.empty
+        or "ifc_class" not in element_df.columns
+        or "material" not in element_df.columns
+    ):
         pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
     else:
         df = element_df.copy()
@@ -496,7 +585,12 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             elif cls == "IfcRoof":
                 return "Decke"
             elif cls == "IfcSlab":
-                if "decke" in type_name or "dach" in type_name or "roof" in type_name or "ceiling" in type_name:
+                if (
+                    "decke" in type_name
+                    or "dach" in type_name
+                    or "roof" in type_name
+                    or "ceiling" in type_name
+                ):
                     return "Decke"
                 else:
                     return "Boden"
@@ -510,7 +604,9 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
         else:
             df["mat_group"] = df["material"].apply(_classify_material_group)
-            pivot = df.pivot_table(index="part", columns="mat_group", aggfunc="size", fill_value=0)
+            pivot = df.pivot_table(
+                index="part", columns="mat_group", aggfunc="size", fill_value=0
+            )
             pivot = pivot.reindex(index=part_order, columns=group_order, fill_value=0)
             row_sums = pivot.sum(axis=1)
             pivot_pct = pivot.div(row_sums.replace(0, 1), axis=0) * 100
@@ -519,11 +615,15 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
     for grp in group_order:
         color = _MATERIAL_GROUP_COLORS[grp]
-        fig.add_trace(go.Bar(
-            x=pivot_pct.index, y=pivot_pct[grp], name=grp,
-            marker_color=color,
-            hovertemplate=f"<b>%{{x}}</b><br>{grp}: %{{y:.1f}}%<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Bar(
+                x=pivot_pct.index,
+                y=pivot_pct[grp],
+                name=grp,
+                marker_color=color,
+                hovertemplate=f"<b>%{{x}}</b><br>{grp}: %{{y:.1f}}%<extra></extra>",
+            )
+        )
 
     fig.update_layout(barmode="stack")
     apply_default_layout(fig, "Materialanteil pro Bauteilgruppe")
@@ -531,10 +631,21 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
         title=dict(
             text="Materialanteil pro Bauteilgruppe",
             font=dict(size=14, color=COLORS["text"]),
-            x=0.0, y=0.98, yanchor="top", xanchor="left",
+            x=0.0,
+            y=0.98,
+            yanchor="top",
+            xanchor="left",
         ),
-        xaxis_title="", yaxis_title="Materialanteil (%)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, font=dict(size=11)),
+        xaxis_title="",
+        yaxis_title="Materialanteil (%)",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.05,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11),
+        ),
         margin=dict(t=80),
     )
     return fig
@@ -542,27 +653,30 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
 
 # ── Page 6 Quality Charts ──────────────────────────────────────────────────────
 
+
 def create_quality_gauge(score: float) -> go.Figure:
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=score,
-        number={"suffix": "%", "font": {"size": 40}},
-        gauge={
-            "axis": {"range": [0, 100], "tickwidth": 1},
-            "bar": {"color": COLORS["primary"]},
-            "steps": [
-                {"range": [0, 50], "color": "#FADBD8"},
-                {"range": [50, 80], "color": "#FDEBD0"},
-                {"range": [80, 100], "color": "#D5F5E3"},
-            ],
-            "threshold": {
-                "line": {"color": COLORS["error_warning"], "width": 4},
-                "thickness": 0.75,
-                "value": score,
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=score,
+            number={"suffix": "%", "font": {"size": 40}},
+            gauge={
+                "axis": {"range": [0, 100], "tickwidth": 1},
+                "bar": {"color": COLORS["primary"]},
+                "steps": [
+                    {"range": [0, 50], "color": "#FADBD8"},
+                    {"range": [50, 80], "color": "#FDEBD0"},
+                    {"range": [80, 100], "color": "#D5F5E3"},
+                ],
+                "threshold": {
+                    "line": {"color": COLORS["error_warning"], "width": 4},
+                    "thickness": 0.75,
+                    "value": score,
+                },
             },
-        },
-        title={"text": "Modellqualität", "font": {"size": 16, "weight": "bold"}},
-    ))
+            title={"text": "Modellqualität", "font": {"size": 16, "weight": "bold"}},
+        )
+    )
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=20, r=20, t=60, b=20),
@@ -574,23 +688,29 @@ def create_quality_gauge(score: float) -> go.Figure:
 def create_error_bar(error_counts: dict) -> go.Figure:
     """Horizontales Balkendiagramm: Fehlertypen absteigend sortiert, Farben nach Schweregrad."""
     LABEL_MAP = {
-        "missing_storey":   "Kein Geschoss",
+        "missing_storey": "Kein Geschoss",
         "missing_material": "Kein Material",
         "missing_quantity": "Keine Mengen",
-        "missing_usage":    "Keine Nutzung",
-        "missing_status":   "Kein Status",
+        "missing_usage": "Keine Nutzung",
+        "missing_status": "Kein Status",
     }
     SEVERITY_COLOR = {
-        "missing_storey":   "#E07B39",
+        "missing_storey": "#E07B39",
         "missing_material": "#E07B39",
         "missing_quantity": "#D4A017",
-        "missing_usage":    "#2E86AB",
-        "missing_status":   "#2E86AB",
+        "missing_usage": "#2E86AB",
+        "missing_status": "#2E86AB",
     }
 
     rows = [
-        {"key": k, "label": LABEL_MAP[k], "value": error_counts.get(k, 0), "color": SEVERITY_COLOR[k]}
-        for k in LABEL_MAP if k in error_counts or error_counts.get(k, 0) == 0
+        {
+            "key": k,
+            "label": LABEL_MAP[k],
+            "value": error_counts.get(k, 0),
+            "color": SEVERITY_COLOR[k],
+        }
+        for k in LABEL_MAP
+        if k in error_counts or error_counts.get(k, 0) == 0
     ]
     rows_sorted = sorted(rows, key=lambda r: r["value"], reverse=True)
 
@@ -598,17 +718,19 @@ def create_error_bar(error_counts: dict) -> go.Figure:
     values = [r["value"] for r in rows_sorted]
     colors = [r["color"] if r["value"] > 0 else "#CCCCCC" for r in rows_sorted]
 
-    fig = go.Figure(go.Bar(
-        x=values,
-        y=labels,
-        orientation="h",
-        marker=dict(color=colors, line=dict(color="rgba(0,0,0,0)", width=0)),
-        text=[str(v) if v > 0 else "" for v in values],
-        textposition="outside",
-        textfont=dict(size=12, color="#1A1A2E"),
-        hovertemplate="<b>%{y}</b><br>Anzahl: %{x}<extra></extra>",
-        cliponaxis=False,
-    ))
+    fig = go.Figure(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker=dict(color=colors, line=dict(color="rgba(0,0,0,0)", width=0)),
+            text=[str(v) if v > 0 else "" for v in values],
+            textposition="outside",
+            textfont=dict(size=12, color="#1A1A2E"),
+            hovertemplate="<b>%{y}</b><br>Anzahl: %{x}<extra></extra>",
+            cliponaxis=False,
+        )
+    )
 
     apply_default_layout(fig, "Fehler nach Kategorie")
     max_val = max(values) if values else 1
@@ -649,21 +771,29 @@ def create_pset_matrix_heatmap(pset_matrix: pd.DataFrame) -> go.Figure:
     z = (df_sorted.T > 0).astype(int).values
     hover_text = [["Vorhanden" if v else "Fehlt" for v in row] for row in z]
 
-    fig = go.Figure(go.Heatmap(
-        z=z,
-        x=classes_sorted,
-        y=psets_sorted,
-        colorscale=[[0, "#E07B39"], [1, "#2E86AB"]],
-        showscale=False,
-        hovertemplate="Klasse: %{x}<br>Pset: %{y}<br>%{text}<extra></extra>",
-        text=hover_text,
-        zmin=0, zmax=1,
-    ))
+    fig = go.Figure(
+        go.Heatmap(
+            z=z,
+            x=classes_sorted,
+            y=psets_sorted,
+            colorscale=[[0, "#E07B39"], [1, "#2E86AB"]],
+            showscale=False,
+            hovertemplate="Klasse: %{x}<br>Pset: %{y}<br>%{text}<extra></extra>",
+            text=hover_text,
+            zmin=0,
+            zmax=1,
+        )
+    )
 
     apply_default_layout(fig, "Pset-Verfügbarkeit nach IFC-Klasse")
     fig.update_layout(
         xaxis=dict(title="IFC-Klasse", tickangle=0, tickfont=dict(size=11)),
-        yaxis=dict(title="Property Set", tickangle=0, tickfont=dict(size=11), autorange="reversed"),
+        yaxis=dict(
+            title="Property Set",
+            tickangle=0,
+            tickfont=dict(size=11),
+            autorange="reversed",
+        ),
         margin=dict(l=20, r=20, t=50, b=60),
     )
     return fig

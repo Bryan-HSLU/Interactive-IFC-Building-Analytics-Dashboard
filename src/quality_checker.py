@@ -13,11 +13,16 @@ def check_quality(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
             storey = row.get("storey", "Nicht zugeordnet")
 
             if row.get("material", "Unbekannt") in ("Unbekannt", None, ""):
-                errors.append({
-                    "element_id": eid, "ifc_class": ifc_class, "storey": storey,
-                    "error_type": "missing_material", "severity": "Warnung",
-                    "description": "Kein Material zugewiesen",
-                })
+                errors.append(
+                    {
+                        "element_id": eid,
+                        "ifc_class": ifc_class,
+                        "storey": storey,
+                        "error_type": "missing_material",
+                        "severity": "Warnung",
+                        "description": "Kein Material zugewiesen",
+                    }
+                )
 
             area = row.get("area_m2")
             volume = row.get("volume_m3")
@@ -27,41 +32,70 @@ def check_quality(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
                 for v in [area, volume, length]
             )
             if not has_qty:
-                errors.append({
-                    "element_id": eid, "ifc_class": ifc_class, "storey": storey,
-                    "error_type": "missing_quantity", "severity": "kritisch",
-                    "description": "Keine Mengenangaben (Fläche/Volumen/Länge)",
-                })
+                errors.append(
+                    {
+                        "element_id": eid,
+                        "ifc_class": ifc_class,
+                        "storey": storey,
+                        "error_type": "missing_quantity",
+                        "severity": "kritisch",
+                        "description": "Keine Mengenangaben (Fläche/Volumen/Länge)",
+                    }
+                )
 
             if storey == "Nicht zugeordnet":
-                errors.append({
-                    "element_id": eid, "ifc_class": ifc_class, "storey": storey,
-                    "error_type": "missing_storey", "severity": "Warnung",
-                    "description": "Keinem Geschoss zugeordnet",
-                })
+                errors.append(
+                    {
+                        "element_id": eid,
+                        "ifc_class": ifc_class,
+                        "storey": storey,
+                        "error_type": "missing_storey",
+                        "severity": "Warnung",
+                        "description": "Keinem Geschoss zugeordnet",
+                    }
+                )
 
             if mode == "umbau":
                 status = row.get("status", "Nicht gefunden")
                 if status in ("Nicht gefunden", None, ""):
-                    errors.append({
-                        "element_id": eid, "ifc_class": ifc_class, "storey": storey,
-                        "error_type": "missing_status", "severity": "kritisch",
-                        "description": "Kein Umbau-Status gefunden",
-                    })
+                    errors.append(
+                        {
+                            "element_id": eid,
+                            "ifc_class": ifc_class,
+                            "storey": storey,
+                            "error_type": "missing_status",
+                            "severity": "kritisch",
+                            "description": "Kein Umbau-Status gefunden",
+                        }
+                    )
 
     if space_df is not None and not space_df.empty:
         for _, row in space_df.iterrows():
             if row.get("usage", "Unbekannt") in ("Unbekannt", None, ""):
-                errors.append({
-                    "element_id": row.get("space_id", "?"),
-                    "ifc_class": "IfcSpace",
-                    "storey": row.get("storey", "Nicht zugeordnet"),
-                    "error_type": "missing_usage", "severity": "Warnung",
-                    "description": "Kein Nutzungstyp zugewiesen",
-                })
+                errors.append(
+                    {
+                        "element_id": row.get("space_id", "?"),
+                        "ifc_class": "IfcSpace",
+                        "storey": row.get("storey", "Nicht zugeordnet"),
+                        "error_type": "missing_usage",
+                        "severity": "Warnung",
+                        "description": "Kein Nutzungstyp zugewiesen",
+                    }
+                )
 
-    error_df = pd.DataFrame(errors) if errors else pd.DataFrame(
-        columns=["element_id", "ifc_class", "storey", "error_type", "severity", "description"]
+    error_df = (
+        pd.DataFrame(errors)
+        if errors
+        else pd.DataFrame(
+            columns=[
+                "element_id",
+                "ifc_class",
+                "storey",
+                "error_type",
+                "severity",
+                "description",
+            ]
+        )
     )
 
     error_counts = {
@@ -113,14 +147,13 @@ def calculate_quality_score(summary: dict) -> float:
         return 100.0
 
     error_counts = summary.get("error_counts", {})
-    critical_errors = (
-        error_counts.get("missing_quantity", 0) +
-        error_counts.get("missing_status", 0)
+    critical_errors = error_counts.get("missing_quantity", 0) + error_counts.get(
+        "missing_status", 0
     )
     warning_errors = (
-        error_counts.get("missing_material", 0) +
-        error_counts.get("missing_storey", 0) +
-        error_counts.get("missing_usage", 0)
+        error_counts.get("missing_material", 0)
+        + error_counts.get("missing_storey", 0)
+        + error_counts.get("missing_usage", 0)
     )
 
     penalty = (critical_errors * 2 + warning_errors * 1) / (total * 3)

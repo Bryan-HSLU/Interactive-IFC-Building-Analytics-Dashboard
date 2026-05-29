@@ -36,9 +36,9 @@ if element_df is None or element_df.empty:
 st.title("Bauteile & Mengen")
 st.caption("Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
 
-_u_area   = st.session_state.get("unit_area",   "m\u00b2")
+_u_area = st.session_state.get("unit_area", "m\u00b2")
 _u_volume = st.session_state.get("unit_volume", "m\u00b3")
-_u_mass   = st.session_state.get("unit_mass",   "kg")
+_u_mass = st.session_state.get("unit_mass", "kg")
 
 # Cross filter resets
 CF_KEYS = ["cf_page4_class", "cf_page4_material", "cf_page3_usage"]
@@ -48,7 +48,8 @@ render_cross_filter_reset("page4", CF_KEYS)
 
 cf_usage = st.session_state.get("cf_page3_usage")
 cf_class = st.session_state.get("cf_page4_class")
-cf_mat   = st.session_state.get("cf_page4_material")
+cf_mat = st.session_state.get("cf_page4_material")
+
 
 # Helper to classify raw material name (must align with chart_factory.py)
 def _get_grouped_material_name(name: str) -> str:
@@ -60,12 +61,17 @@ def _get_grouped_material_name(name: str) -> str:
     else:
         return str(name).strip()
 
+
 if "material" in element_df.columns:
-    element_df["grouped_material"] = element_df["material"].apply(_get_grouped_material_name)
+    element_df["grouped_material"] = element_df["material"].apply(
+        _get_grouped_material_name
+    )
 
 if cf_usage:
     if space_df_raw is not None and not space_df_raw.empty:
-        valid_storeys = space_df_raw[space_df_raw["usage"] == cf_usage]["storey"].unique()
+        valid_storeys = space_df_raw[space_df_raw["usage"] == cf_usage][
+            "storey"
+        ].unique()
         if len(valid_storeys) > 0:
             element_df = element_df[element_df["storey"].isin(valid_storeys)]
         else:
@@ -81,7 +87,12 @@ if not element_df_all.empty and "grouped_material" in element_df_all.columns:
     vol_col = "volume_m3" if _u_volume in ("m³", "m\u00b3") else "area_m2"
     if vol_col in element_df_all.columns:
         df_valid = element_df_all.dropna(subset=[vol_col])
-        top_mats = df_valid.groupby("grouped_material")[vol_col].sum().nlargest(5).index.tolist()
+        top_mats = (
+            df_valid.groupby("grouped_material")[vol_col]
+            .sum()
+            .nlargest(5)
+            .index.tolist()
+        )
 
 # Now apply material & class filter for KPIs, stacked bar, and table
 if cf_class and "ifc_class" in element_df.columns:
@@ -105,16 +116,27 @@ if cf_class:
 if cf_mat:
     active_parts.append(f"Material: **{cf_mat}**")
 if active_parts:
-    st.info("Aktiver Filter — " + " | ".join(active_parts) + "  (Button oben zum Zurücksetzen)")
+    st.info(
+        "Aktiver Filter — "
+        + " | ".join(active_parts)
+        + "  (Button oben zum Zurücksetzen)"
+    )
 
 # -- KPI Cards (reflect the active material filter!) --------------------------
-vol_sum = pd.to_numeric(element_df.get("volume_m3", pd.Series(dtype=float)), errors="coerce").sum(skipna=True)
-area_sum = pd.to_numeric(element_df.get("area_m2", pd.Series(dtype=float)), errors="coerce").sum(skipna=True)
+vol_sum = pd.to_numeric(
+    element_df.get("volume_m3", pd.Series(dtype=float)), errors="coerce"
+).sum(skipna=True)
+area_sum = pd.to_numeric(
+    element_df.get("area_m2", pd.Series(dtype=float)), errors="coerce"
+).sum(skipna=True)
 kpi = st.columns(4)
 kpi[0].metric("IFC-Klassen", f"{element_df['ifc_class'].nunique()}")
 kpi[1].metric("Bauelemente", f"{len(element_df):,}")
 kpi[2].metric("Volumen total", f"{vol_sum:,.1f} m³")
-kpi[3].metric("Materialien", f"{element_df['material'].nunique()}" if "material" in element_df.columns else "–")
+kpi[3].metric(
+    "Materialien",
+    f"{element_df['material'].nunique()}" if "material" in element_df.columns else "–",
+)
 
 st.divider()
 
@@ -122,12 +144,16 @@ st.divider()
 # Always show ALL materials so the user can click to select/deselect
 
 st.subheader("Mengen nach Materialgruppe")
-st.caption("Klicken Sie auf einen Balken, um nach diesem Material zu filtern. Zum Aufheben nutzen Sie den Button oben.")
+st.caption(
+    "Klicken Sie auf einen Balken, um nach diesem Material zu filtern. Zum Aufheben nutzen Sie den Button oben."
+)
 unit = st.session_state.get("unit_volume", "m³")
 fig_mat = create_material_volume_bar(element_df_all, unit)
 fig_mat.update_layout(height=500)
 
-ev_mat = st.plotly_chart(fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True)
+ev_mat = st.plotly_chart(
+    fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True
+)
 
 # Stable click handling: only act when the clicked material DIFFERS from
 # the current filter. This prevents the infinite rerun loop caused by
@@ -144,7 +170,9 @@ st.divider()
 # -- Chart B (Insight 6): "Wie verteilen sich Materialien auf Wand, Boden, Decke?"
 
 st.subheader("Materialanteil pro Bauteilgruppe")
-st.caption("100% Stacked Bar Chart zur vergleichenden Zusammensetzung (Decke, Boden, Wand, Fenster, Tür).")
+st.caption(
+    "100% Stacked Bar Chart zur vergleichenden Zusammensetzung (Decke, Boden, Wand, Fenster, Tür)."
+)
 fig_stacked = create_element_material_stacked_bar(element_df)
 fig_stacked.update_layout(
     height=500,
@@ -166,32 +194,55 @@ st.subheader("Element-Mengenliste")
 st.caption("Detaillierte Bauteilliste des Modells.")
 
 table_df = element_df.copy()
-search = st.text_input("Suche (Bauteil-Typ oder Material)", key="search_elements", placeholder="z.B. Beton, Wand...")
+search = st.text_input(
+    "Suche (Bauteil-Typ oder Material)",
+    key="search_elements",
+    placeholder="z.B. Beton, Wand...",
+)
 if search:
     mask = pd.Series([False] * len(table_df))
     for col_search in ["type_name", "material", "ifc_class"]:
         if col_search in table_df.columns:
-            mask |= table_df[col_search].astype(str).str.contains(search, case=False, na=False)
+            mask |= (
+                table_df[col_search]
+                .astype(str)
+                .str.contains(search, case=False, na=False)
+            )
     table_df = table_df[mask]
 
-display_cols = ["element_id", "ifc_class", "type_name", "material", "storey", "area_m2", "volume_m3", "length_m"]
+display_cols = [
+    "element_id",
+    "ifc_class",
+    "type_name",
+    "material",
+    "storey",
+    "area_m2",
+    "volume_m3",
+    "length_m",
+]
 if mode == "umbau" and "status" in table_df.columns:
     display_cols.append("status")
 display_cols = [c for c in display_cols if c in table_df.columns]
 
 col_rename = {
-    "element_id": "ID", "ifc_class": "IFC-Klasse", "type_name": "Typ",
-    "material": "Material", "storey": "Geschoss",
-    "area_m2": "Fläche (m²)", "volume_m3": "Volumen (m³)", "length_m": "Länge (m)",
+    "element_id": "ID",
+    "ifc_class": "IFC-Klasse",
+    "type_name": "Typ",
+    "material": "Material",
+    "storey": "Geschoss",
+    "area_m2": "Fläche (m²)",
+    "volume_m3": "Volumen (m³)",
+    "length_m": "Länge (m)",
     "status": "Status",
 }
 display_df = table_df[display_cols].rename(columns=col_rename)
 for num_col in ["Fläche (m²)", "Volumen (m³)", "Länge (m)"]:
     if num_col in display_df.columns:
-        display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(2)
+        display_df[num_col] = pd.to_numeric(display_df[num_col], errors="coerce").round(
+            2
+        )
 
 display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
 _cap = unit_caption(_u_area, _u_volume, _u_mass)
 st.caption(f"{len(display_df):,} Elemente angezeigt" + (f" | {_cap}" if _cap else ""))
 st.dataframe(display_df, use_container_width=True, hide_index=True)
-

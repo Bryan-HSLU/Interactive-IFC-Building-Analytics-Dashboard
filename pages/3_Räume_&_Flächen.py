@@ -26,9 +26,7 @@ space_df = get_space_df(filtered=True)
 
 if space_df is None or space_df.empty:
     st.title("Räume & Flächen")
-    st.info(
-        "Dieses Modell enthält keine Räume (IfcSpace) für eine Detailauswertung."
-    )
+    st.info("Dieses Modell enthält keine Räume (IfcSpace) für eine Detailauswertung.")
     st.stop()
 
 st.title("Räume & Flächen")
@@ -41,9 +39,13 @@ render_cross_filter_reset("page3", CF_KEYS)
 cf_usage = st.session_state.get("cf_page3_usage")
 if cf_usage:
     if cf_usage == "Gesamt":
-        st.info("Aktivierter Filter (von Übersicht): **Gesamtgebäude** (alle Räume angezeigt)")
+        st.info(
+            "Aktivierter Filter (von Übersicht): **Gesamtgebäude** (alle Räume angezeigt)"
+        )
     else:
-        st.info(f"Aktivierter Filter (von Übersicht): Räume gefiltert nach Nutzung **{cf_usage}**")
+        st.info(
+            f"Aktivierter Filter (von Übersicht): Räume gefiltert nach Nutzung **{cf_usage}**"
+        )
         space_df = space_df[space_df["usage"] == cf_usage]
 
 if space_df.empty:
@@ -53,7 +55,9 @@ if space_df.empty:
 # ── 5️⃣ Scatter Plot: "Gibt es Räume mit unverhältnismässig hohem CO₂?" ──────────
 
 st.subheader("Ausreisser-Erkennung (Fläche vs. CO₂-Last)")
-st.caption("Punkte weit über der Trendlinie zeigen Räume mit überdurchschnittlich hoher CO₂-Intensität.")
+st.caption(
+    "Punkte weit über der Trendlinie zeigen Räume mit überdurchschnittlich hoher CO₂-Intensität."
+)
 
 fig_scatter = create_room_co2_scatter(space_df)
 st.plotly_chart(fig_scatter, use_container_width=True, key="p3_scatter")
@@ -64,6 +68,7 @@ st.divider()
 st.subheader("Raum-Details & Kennzahlen")
 st.caption("Details on demand: Suchbare Tabelle mit farbcodierter CO₂-Dichte.")
 
+
 # Generate Plausible Main Material based on Room Usage
 def _estimate_main_material(row):
     usage = str(row.get("usage", "")).lower()
@@ -72,7 +77,12 @@ def _estimate_main_material(row):
         return "Stahlbeton / Stahl"
     elif "wc" in usage or "wc" in name or "toilet" in name or "bad" in name:
         return "Keramikfliesen"
-    elif "flur" in usage or "flur" in name or "korridor" in name or "erschliessung" in name:
+    elif (
+        "flur" in usage
+        or "flur" in name
+        or "korridor" in name
+        or "erschliessung" in name
+    ):
         return "Verputz / Gips"
     elif "büro" in usage or "büro" in name or "office" in name:
         return "Gipskarton / Glas"
@@ -81,27 +91,48 @@ def _estimate_main_material(row):
     else:
         return "Verputz"
 
+
 table_df = space_df.copy()
 table_df["main_material"] = table_df.apply(_estimate_main_material, axis=1)
 
 # Search Bar
-search = st.text_input("Suche (Raumname)", key="search_rooms", placeholder="z.B. Büro, Flur...")
+search = st.text_input(
+    "Suche (Raumname)", key="search_rooms", placeholder="z.B. Büro, Flur..."
+)
 if search:
     mask = pd.Series([False] * len(table_df))
     for col_search in ["name", "usage", "main_material"]:
         if col_search in table_df.columns:
-            mask |= table_df[col_search].astype(str).str.contains(search, case=False, na=False)
+            mask |= (
+                table_df[col_search]
+                .astype(str)
+                .str.contains(search, case=False, na=False)
+            )
     table_df = table_df[mask]
 
 if not table_df.empty:
-    display_df = table_df[["name", "usage", "area_m2", "volume_m3", "main_material", "co2_load"]].rename(columns={
-        "name": "Raumname", "usage": "Nutzungstyp", "area_m2": "Fläche (m²)",
-        "volume_m3": "Volumen (m³)", "main_material": "Hauptmaterial", "co2_load": "CO₂-Last (kg)"
-    })
+    display_df = table_df[
+        ["name", "usage", "area_m2", "volume_m3", "main_material", "co2_load"]
+    ].rename(
+        columns={
+            "name": "Raumname",
+            "usage": "Nutzungstyp",
+            "area_m2": "Fläche (m²)",
+            "volume_m3": "Volumen (m³)",
+            "main_material": "Hauptmaterial",
+            "co2_load": "CO₂-Last (kg)",
+        }
+    )
 
-    display_df["Fläche (m²)"] = pd.to_numeric(display_df["Fläche (m²)"], errors="coerce").round(1)
-    display_df["Volumen (m³)"] = pd.to_numeric(display_df["Volumen (m³)"], errors="coerce").round(1)
-    display_df["CO₂-Last (kg)"] = pd.to_numeric(display_df["CO₂-Last (kg)"], errors="coerce").round(0)
+    display_df["Fläche (m²)"] = pd.to_numeric(
+        display_df["Fläche (m²)"], errors="coerce"
+    ).round(1)
+    display_df["Volumen (m³)"] = pd.to_numeric(
+        display_df["Volumen (m³)"], errors="coerce"
+    ).round(1)
+    display_df["CO₂-Last (kg)"] = pd.to_numeric(
+        display_df["CO₂-Last (kg)"], errors="coerce"
+    ).round(0)
 
     # Color Heatmap styler for the CO2 column
     def _style_co2(val):
@@ -125,6 +156,10 @@ if not table_df.empty:
             return ""
 
     st.caption(f"{len(display_df):,} Räume angezeigt")
-    st.dataframe(display_df.style.map(_style_co2, subset=["CO₂-Last (kg)"]), use_container_width=True, hide_index=True)
+    st.dataframe(
+        display_df.style.map(_style_co2, subset=["CO₂-Last (kg)"]),
+        use_container_width=True,
+        hide_index=True,
+    )
 else:
     st.info("Keine Detaildaten für die Suche vorhanden.")

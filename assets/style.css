@@ -8,6 +8,14 @@ html, body, [class*="css"] {
 /* Hide Streamlit default footer */
 footer { visibility: hidden; }
 
+/* Sidebar background — brownish-grey */
+[data-testid="stSidebar"] {
+    background-color: #6B5B4E !important;
+}
+[data-testid="stSidebar"] * {
+    color: #F5F0ED !important;
+}
+
 /* Mode cards on upload page */
 .mode-card {
     border: 2px solid #e0e0e0;

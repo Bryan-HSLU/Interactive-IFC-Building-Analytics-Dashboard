@@ -33,13 +33,21 @@ CO2_SCALE = [
 
 # Consistent Room Type Palette
 ROOM_COLORS = {
-    "Veloraum": "#2E86AB",  # Blau
-    "Bar/Empfang": "#C8A96E",  # Beige
-    "Empfang": "#C8A96E",
-    "Bar": "#C8A96E",
-    "Saal": "#5C6E7E",  # Dunkelgrau-Blau
-    "Restaurant": "#A8D4E6",  # Hellblau
-    "Warteraum": "#F0C987",  # Gelb
+    "Veloraum": "#E07B39",  # Lager/Technik (Orange)
+    "Abstellkamer": "#E07B39",
+    "Abstellraum": "#E07B39",
+    "Technik": "#E07B39",
+    "Saal": "#2E86AB",  # Aufenthalt (Blau)
+    "Restaurant": "#2E86AB",
+    "Bar/Empfang": "#2E86AB",
+    "Empfang": "#2E86AB",
+    "Bar": "#2E86AB",
+    "Warteraum": "#2E86AB",
+    "WC": "#7B5EA7",  # Sanitär (Lila)
+    "WC Damen": "#7B5EA7",
+    "WC Herren": "#7B5EA7",
+    "Treppenhaus": "#5C8A6E",  # Verkehr (Grün)
+    "Vorraum": "#5C8A6E",
     "Andere": "#CCCCCC",  # Grau
     "Sonstige": "#CCCCCC",
     "Unbekannt": "#CCCCCC",
@@ -246,18 +254,18 @@ HOLZ_TRIGGERS = [
 ]
 
 RAUM_GRUPPEN = {
-    "Veloraum": ("Lager/Technik", "#5C6E7E"),
-    "Abstellkamer": ("Lager/Technik", "#5C6E7E"),
-    "Abstellraum": ("Lager/Technik", "#5C6E7E"),
-    "Technik": ("Lager/Technik", "#5C6E7E"),
+    "Veloraum": ("Lager/Technik", "#E07B39"),
+    "Abstellkamer": ("Lager/Technik", "#E07B39"),
+    "Abstellraum": ("Lager/Technik", "#E07B39"),
+    "Technik": ("Lager/Technik", "#E07B39"),
     "Saal": ("Aufenthalt", "#2E86AB"),
     "Restaurant": ("Aufenthalt", "#2E86AB"),
     "Bar/Empfang": ("Aufenthalt", "#2E86AB"),
     "Warteraum": ("Aufenthalt", "#2E86AB"),
     "Backstage": ("Aufenthalt", "#2E86AB"),
-    "WC": ("Sanitär", "#C8A96E"),
-    "WC Damen": ("Sanitär", "#C8A96E"),
-    "WC Herren": ("Sanitär", "#C8A96E"),
-    "Treppenhaus": ("Verkehr", "#F0C987"),
-    "Vorraum": ("Verkehr", "#F0C987"),
+    "WC": ("Sanitär", "#7B5EA7"),
+    "WC Damen": ("Sanitär", "#7B5EA7"),
+    "WC Herren": ("Sanitär", "#7B5EA7"),
+    "Treppenhaus": ("Verkehr", "#5C8A6E"),
+    "Vorraum": ("Verkehr", "#5C8A6E"),
 }

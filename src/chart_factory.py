@@ -94,7 +94,7 @@ def _empty_fig(message: str) -> go.Figure:
 def _get_room_color(usage: str, force_orange: bool = False) -> str:
     usage_lower = str(usage).lower().strip()
 
-    if "gesamt" in usage_lower:
+    if "gesamt" in usage_lower or "root" in usage_lower or "total" in usage_lower:
         return "#E67E22"
 
     if force_orange:
@@ -111,10 +111,15 @@ def _get_room_color(usage: str, force_orange: bool = False) -> str:
         else:
             return "#FFB74D"
 
+    # Try mapping to RAUM_GRUPPEN first
+    for key, (group, color) in RAUM_GRUPPEN.items():
+        if key.lower() in usage_lower:
+            return color
+
     for key, color in ROOM_COLORS.items():
         if key.lower() in usage_lower:
             return color
-    return ROOM_COLORS["Andere"]
+    return ROOM_COLORS.get("Andere", "#CCCCCC")
 
 
 # ── Treemap: "Welcher Raumtyp nimmt wie viel Fläche ein?" ──────────────────
@@ -353,7 +358,7 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
 # ── Scatter Plot: "Gibt es Räume mit unverhältnismässig hohem CO2?" ──────────
 
 
-def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
+def create_room_co2_scatter(space_df: pd.DataFrame, selected_raum: str = None) -> go.Figure:
     if (
         space_df.empty
         or "area_m2" not in space_df.columns
@@ -386,14 +391,46 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
     all_x = df["area_m2"].tolist()
     all_y = df["co2_load"].tolist()
 
+    def hex_to_rgba(hex_str, opacity):
+        hex_str = hex_str.lstrip('#')
+        r = int(hex_str[0:2], 16)
+        g = int(hex_str[2:4], 16)
+        b = int(hex_str[4:6], 16)
+        return f"rgba({r},{g},{b},{opacity})"
+
     for usage in usages:
         sub = df[df["grouped_usage"] == usage]
-        color = sub["group_color"].iloc[0]
+        base_color = sub["group_color"].iloc[0]
         names = (
             sub["name"].astype(str).tolist()
             if "name" in sub.columns
             else ["Raum"] * len(sub)
         )
+
+        marker_colors = []
+        marker_sizes = []
+        line_colors = []
+        line_widths = []
+
+        for idx, row in sub.iterrows():
+            rname = row.get("name", "")
+            if selected_raum:
+                if rname == selected_raum:
+                    marker_colors.append(hex_to_rgba(base_color, 1.0))
+                    marker_sizes.append(20)
+                    line_colors.append("rgba(0,0,0,1.0)")
+                    line_widths.append(3.0)
+                else:
+                    marker_colors.append(hex_to_rgba(base_color, 0.3))
+                    marker_sizes.append(14)
+                    line_colors.append("rgba(45,45,45,0.3)")
+                    line_widths.append(1.5)
+            else:
+                marker_colors.append(hex_to_rgba(base_color, 0.95))
+                marker_sizes.append(14)
+                line_colors.append("rgba(45,45,45,0.95)")
+                line_widths.append(1.5)
+
         fig.add_trace(
             go.Scatter(
                 x=sub["area_m2"],
@@ -401,10 +438,9 @@ def create_room_co2_scatter(space_df: pd.DataFrame) -> go.Figure:
                 mode="markers",
                 name=usage,
                 marker=dict(
-                    color=color,
-                    size=14,
-                    opacity=0.95,
-                    line=dict(width=1.5, color="#2D2D2D"),
+                    color=marker_colors,
+                    size=marker_sizes,
+                    line=dict(width=line_widths, color=line_colors),
                 ),
                 text=names,
                 customdata=sub["usage"].tolist(),
@@ -892,5 +928,122 @@ def create_pset_lollipop_chart(pset_matrix: pd.DataFrame) -> go.Figure:
         hoverlabel=dict(bgcolor="white", font_size=12, font_family="Inter, sans-serif"),
     )
 
+    return fig
+
+
+def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = None) -> go.Figure:
+    """Horizontal bar chart showing CO2 density (co2_load / area_m2) for each room,
+    sorted by density descending.
+    Click-interaction highlights the selected room and fades others.
+    """
+    if (
+        space_df.empty
+        or "area_m2" not in space_df.columns
+        or "co2_load" not in space_df.columns
+    ):
+        return _empty_fig("Keine ausreichenden Raumdaten für CO₂-Dichte-Chart verfügbar")
+
+    df = space_df.dropna(subset=["area_m2", "co2_load"]).copy()
+    df["area_m2"] = pd.to_numeric(df["area_m2"], errors="coerce")
+    df["co2_load"] = pd.to_numeric(df["co2_load"], errors="coerce")
+    df = df[(df["area_m2"] > 0) & (df["co2_load"] >= 0)]
+
+    if df.empty:
+        return _empty_fig("Keine quantitativen Werte für CO₂-Dichte-Chart")
+
+    # Berechne CO2-Dichte
+    df["co2_dichte"] = df["co2_load"] / df["area_m2"]
+    
+    # Sortieren nach Dichte aufsteigend, da Plotly horizontal bar chart von unten nach oben rendert.
+    # So steht der höchste Dichtewert ganz oben!
+    df = df.sort_values("co2_dichte", ascending=True)
+
+    def _group_room_usage(usage: str) -> tuple[str, str]:
+        usage_clean = str(usage).strip()
+        for key, (group, color) in RAUM_GRUPPEN.items():
+            if key.lower() in usage_clean.lower():
+                return group, color
+        return "Andere", "#CCCCCC"
+
+    df["grouped_usage"] = df["usage"].apply(lambda u: _group_room_usage(u)[0])
+    df["group_color"] = df["usage"].apply(lambda u: _group_room_usage(u)[1])
+
+    # Styling auf Basis von selected_raum
+    bar_colors = []
+    line_colors = []
+    line_widths = []
+
+    def hex_to_rgba(hex_str, opacity):
+        hex_str = hex_str.lstrip('#')
+        r = int(hex_str[0:2], 16)
+        g = int(hex_str[2:4], 16)
+        b = int(hex_str[4:6], 16)
+        return f"rgba({r},{g},{b},{opacity})"
+
+    for idx, row in df.iterrows():
+        rname = row.get("name", "")
+        base_color = row.get("group_color", "#CCCCCC")
+        if selected_raum:
+            if rname == selected_raum:
+                # Hervorgehoben: Volle Opazität + dicke schwarze Kontur
+                bar_colors.append(hex_to_rgba(base_color, 1.0))
+                line_colors.append("rgba(0,0,0,1.0)")
+                line_widths.append(3.0)
+            else:
+                # Verblasst: Niedrige Opazität
+                bar_colors.append(hex_to_rgba(base_color, 0.3))
+                line_colors.append("rgba(45,45,45,0.3)")
+                line_widths.append(0.0)
+        else:
+            # Standard: Volle Opazität
+            bar_colors.append(hex_to_rgba(base_color, 0.95))
+            line_colors.append("rgba(0,0,0,0)")
+            line_widths.append(0.0)
+
+    # Plotly bar chart
+    fig = go.Figure(
+        go.Bar(
+            x=df["co2_dichte"],
+            y=df["name"],
+            orientation="h",
+            marker=dict(
+                color=bar_colors,
+                line=dict(color=line_colors, width=line_widths)
+            ),
+            text=[f"{v:.1f} kg/m²" for v in df["co2_dichte"]],
+            textposition="outside",
+            textfont=dict(size=12, color="#2D2D2D"),
+            hovertemplate="<b>%{y}</b><br>Dichte: %{x:.1f} kg/m²<br>Fläche: %{customdata[0]:.1f} m²<br>CO₂ total: %{customdata[1]:,.0f} kg<extra></extra>",
+            customdata=list(zip(df["area_m2"], df["co2_load"])),
+            cliponaxis=False,
+        )
+    )
+
+    max_val = df["co2_dichte"].max() or 1.0
+    apply_default_layout(fig, "CO₂-Intensität pro Raum (kg CO₂eq / m²)")
+    fig.update_layout(
+        title=dict(
+            text="CO₂-Intensität pro Raum (kg CO₂eq / m²)<br>"
+                 "<span style='font-size:12px;color:#888'>Zeigt welche Räume überproportional viel CO₂ pro Fläche verbrauchen</span>",
+            font=dict(size=14, color=COLORS["text"], family="Inter, sans-serif"),
+            x=0, xanchor="left",
+        ),
+        xaxis=dict(
+            title="kg CO₂eq / m²",
+            range=[0, max_val * 1.25],
+            showgrid=True,
+            gridcolor="#EAEAEA",
+            zeroline=False,
+            tickfont=dict(size=12, color=COLORS["text_light"]),
+        ),
+        yaxis=dict(
+            title="",
+            tickfont=dict(size=12, color=COLORS["text"]),
+        ),
+        paper_bgcolor="white",
+        plot_bgcolor="#F5F5F5",
+        margin=dict(l=10, r=60, t=80, b=40),
+        hoverlabel=dict(bgcolor="white", font_size=12, font_family="Inter, sans-serif"),
+    )
     return fig
 

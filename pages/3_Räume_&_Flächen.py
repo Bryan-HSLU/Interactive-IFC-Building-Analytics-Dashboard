@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
-from src.chart_factory import create_room_co2_scatter
+from src.chart_factory import create_room_co2_scatter, create_room_co2_density_bar
 from src.constants import COLORS
 
 init_session_state()
@@ -52,15 +52,48 @@ if space_df.empty:
     st.warning("Keine Räume entsprechen dem aktiven Filter.")
     st.stop()
 
-# ── 5️⃣ Scatter Plot: "Gibt es Räume mit unverhältnismässig hohem CO₂?" ──────────
+if "selected_raum" not in st.session_state:
+    st.session_state["selected_raum"] = None
+
+# ── 5️⃣ Scatter Plot & CO₂-Dichte Chart ──────────────────────────────────────────
 
 st.subheader("Ausreisser-Erkennung (Fläche vs. CO₂-Last)")
 st.caption(
     "Punkte weit über der Trendlinie zeigen Räume mit überdurchschnittlich hoher CO₂-Intensität."
 )
 
-fig_scatter = create_room_co2_scatter(space_df)
+selected_raum = st.session_state.get("selected_raum")
+if selected_raum:
+    st.info(f"Ausgewählter Raum: **{selected_raum}** (im Scatter Plot hervorgehoben, andere halbtransparent)")
+    if st.button("✕ Raumauswahl aufheben", key="reset_selected_raum_btn", use_container_width=True):
+        st.session_state["selected_raum"] = None
+        st.rerun()
+
+fig_scatter = create_room_co2_scatter(space_df, selected_raum)
 st.plotly_chart(fig_scatter, use_container_width=True, key="p3_scatter")
+
+st.divider()
+
+fig_density = create_room_co2_density_bar(space_df, selected_raum)
+event_density = st.plotly_chart(
+    fig_density,
+    use_container_width=True,
+    on_select="rerun",
+    key="room_density_chart"
+)
+
+# Klick-Interaktion auswerten
+if event_density and hasattr(event_density, "selection") and event_density.selection:
+    points = event_density.selection.get("points", [])
+    if points:
+        clicked_room = points[0].get("y")
+        if clicked_room:
+            if selected_raum == clicked_room:
+                st.session_state["selected_raum"] = None
+                st.rerun()
+            else:
+                st.session_state["selected_raum"] = clicked_room
+                st.rerun()
 
 # ── 7️⃣ Details Table with Heatmapped CO2 Column ──────────────────────────────────
 

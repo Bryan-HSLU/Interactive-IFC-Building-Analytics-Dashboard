@@ -1,18 +1,13 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
-from streamlit_plotly_events import plotly_events
-from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
-from src.filters import render_sidebar
-from src.chart_factory import (
-    create_room_sunburst,
-    create_room_bubble,
-    create_co2_treemap,
-    create_status_distribution,
+from src.state_manager import (
+    init_session_state,
+    get_element_df,
+    get_space_df,
 )
-from src.impact_calculator import get_impact_summary
-from src.ui_helpers import kpi_card
-from src.constants import SIA_2032_LIMIT, COLORS, STATUS_COLORS
+from src.filters import render_sidebar
+from src.chart_factory import create_room_treemap
+from src.constants import COLORS
 
 init_session_state()
 
@@ -28,144 +23,93 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("Bitte zuerst eine IFC-Datei auf **Seite 1** hochladen.")
+    st.warning("Please upload an IFC file on **Page 1** first.")
     st.stop()
 
 element_df = get_element_df(filtered=True)
 space_df = get_space_df(filtered=True)
+has_spaces = space_df is not None and not space_df.empty
 
-# ── Mode Badge ────────────────────────────────────────────────────────────────────────
-if mode == "neubau":
-    mode_label = "Neubau"
-    mode_bg = "#D5EEF0"
-    mode_border = COLORS["neubau"]
-else:
-    mode_label = "Umbau / Sanierung"
-    mode_bg = "#EDE3D5"
-    mode_border = COLORS["abbruch"]
+st.title("Gebäude-Übersicht")
+st.caption("Schneller Überblick und räumliche NFA-Verteilung des Gebäudes.")
 
-st.markdown(
-    f'<div style="display:inline-block;background:{mode_bg};border-left:4px solid {mode_border};'
-    f'border-radius:4px;padding:4px 14px;font-weight:600;margin-bottom:8px;font-size:14px;">'
-    f'{mode_label}</div>',
-    unsafe_allow_html=True,
+# ── 1️⃣ KPI Cards: "Wie gross ist das Gebäude insgesamt – und was enthält es?" ──
+
+total_area = (
+    space_df["area_m2"].sum() if has_spaces and "area_m2" in space_df.columns else 0.0
 )
-st.title("Overview")
+room_count = len(space_df) if has_spaces else 0
+window_count = (
+    int((element_df["ifc_class"].isin(["IfcWindow", "IfcCurtainWall"])).sum())
+    if element_df is not None
+    else 0
+)
+door_count = (
+    int((element_df["ifc_class"] == "IfcDoor").sum()) if element_df is not None else 0
+)
+total_co2 = (
+    pd.to_numeric(element_df["co2e_total"], errors="coerce").sum()
+    if element_df is not None and "co2e_total" in element_df.columns
+    else 0.0
+)
 
-# ── KPI Row ───────────────────────────────────────────────────────────────────────
-# Fix: single call to get_quality_data() — previous code called it twice
-_, quality_summary = get_quality_data()
-summary = get_impact_summary(element_df, space_df, mode)
-score = quality_summary.get("score", 0) if quality_summary else 0
-co2_per_m2 = summary.get("co2e_per_m2") if summary else None
 
-kpi = st.columns(5)
-with kpi[0]:
-    kpi_card("Bauelemente", f"{len(element_df):,}" if element_df is not None else "–")
-with kpi[1]:
-    kpi_card("Räume", f"{len(space_df):,}" if space_df is not None and not space_df.empty else "–")
-with kpi[2]:
-    kpi_card(
-        "Geschosse",
-        f"{element_df['storey'].nunique():,}" if element_df is not None and "storey" in element_df.columns else "–"
+def render_kpi(label: str, value: str):
+    st.markdown(
+        f'<div style="background:#FFFFFF; border-top: 4px solid #2E86AB; border-radius: 6px; '
+        f'padding: 12px 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 12px; text-align: center;">'
+        f'<div style="font-size: 0.8rem; color: #8B8B8B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{label}</div>'
+        f'<div style="font-size: 1.65rem; font-weight: 700; color: #2D2D2D; margin-top: 4px; white-space: nowrap;">{value}</div>'
+        f"</div>",
+        unsafe_allow_html=True,
     )
-with kpi[3]:
-    if co2_per_m2:
-        diff = co2_per_m2 - SIA_2032_LIMIT
-        if diff <= 0:
-            d_color = COLORS["error_ok"]
-            d_text = f"↓ {abs(diff):.1f} unter SIA 2032"
-        else:
-            d_color = COLORS["error_warning"]
-            d_text = f"↑ {diff:.1f} über SIA 2032"
-        kpi_card("CO₂e / m² NGF", f"{co2_per_m2:.1f} kg/m²", d_text, d_color)
-    else:
-        kpi_card("CO₂e / m² NGF", "–", f"Limit: {SIA_2032_LIMIT:.0f} kg/m²·a", COLORS["text_light"])
-with kpi[4]:
-    q_color = COLORS["error_ok"] if score >= 80 else COLORS["error_warning"] if score >= 50 else COLORS["error_critical"]
-    kpi_card("Modellqualität", f"{score:.0f}%", delta_color=q_color)
+
+
+# Custom column weights to give wider cards (like Gesamtfläche and Total CO2) more horizontal room
+kcols = st.columns([1.3, 1.2, 0.8, 0.8, 1.1])
+with kcols[0]:
+    render_kpi("Gesamtfläche", f"{total_area:,.1f} m²" if total_area > 0 else "–")
+with kcols[1]:
+    render_kpi("Anzahl Räume", f"{room_count:,}" if room_count > 0 else "–")
+with kcols[2]:
+    render_kpi("Fenster", f"{window_count:,}" if window_count > 0 else "–")
+with kcols[3]:
+    render_kpi("Türen", f"{door_count:,}" if door_count > 0 else "–")
+with kcols[4]:
+    render_kpi("Total CO₂", f"{total_co2:,.0f} kg" if total_co2 > 0 else "–")
 
 st.divider()
 
-# ── Row 1: Sunburst + Bubble Chart ─────────────────────────────────────────────────
-col_sun, col_bubble = st.columns(2)
+# ── 2️⃣ Treemap: "Welcher Raumtyp nimmt wie viel Fläche ein?" ──────────────────
 
-with col_sun:
-    if space_df is not None and not space_df.empty:
-        fig_sun = create_room_sunburst(space_df)
-        sel_sun = plotly_events(fig_sun, click_event=True, key="ov_sunburst", override_height=420)
-        if sel_sun:
-            clicked_label = sel_sun[0].get("label") or sel_sun[0].get("id") or ""
-            known_storeys = space_df["storey"].dropna().unique().tolist() if "storey" in space_df.columns else []
-            if clicked_label in known_storeys:
-                prev = st.session_state.get("overview_storey")
-                st.session_state.overview_storey = None if clicked_label == prev else clicked_label
-                st.rerun()
-    else:
-        st.info("Keine Raumdaten verfügbar.")
+st.subheader("Räumliche Flächenverteilung")
+st.caption(
+    "Proportionen der Raumtypen nach Netto-Geschossfläche (NFA). Klicken Sie auf einen Typ, um andere Seiten zu filtern."
+)
 
-with col_bubble:
-    if space_df is not None and not space_df.empty:
-        sel_storey = st.session_state.get("overview_storey")
-        df_bubble = space_df[space_df["storey"] == sel_storey] if sel_storey and "storey" in space_df.columns else space_df
-        # Fix: removed broken inline reset link — real reset button is shown below
-        if sel_storey:
-            st.caption(f"🔍 Gefiltert: Geschoss **{sel_storey}**")
-        fig_bubble = create_room_bubble(df_bubble)
-        st.plotly_chart(fig_bubble, use_container_width=True, key="ov_bubble")
-    else:
-        st.info("Keine Raumdaten für Bubble Chart verfügbar.")
+if has_spaces:
+    fig_tree = create_room_treemap(space_df)
+    ev_tree = st.plotly_chart(
+        fig_tree, on_select="rerun", key="ov_treemap", use_container_width=True
+    )
 
-if st.session_state.get("overview_storey"):
-    if st.button("× Geschoss-Filter zurücksetzen", key="ov_reset"):
-        st.session_state.overview_storey = None
-        st.rerun()
-
-st.divider()
-
-# ── Row 2: CO2-Treemap + Status-Donut (Umbau) ─────────────────────────────────
-if mode == "umbau" and element_df is not None and "status" in element_df.columns:
-    col_tree, col_donut = st.columns([3, 2])
+    # Master filter logic — only act when the clicked type DIFFERS from
+    # the current filter to prevent infinite rerun loops.
+    if ev_tree and ev_tree.selection and ev_tree.selection.points:
+        pt = ev_tree.selection.points[0]
+        clicked = pt.get("label") or pt.get("id") or ""
+        if clicked:
+            # Clean HTML tags like <b> from the label to get raw string
+            clicked_clean = clicked.replace("<b>", "").replace("</b>", "").strip()
+            if clicked_clean in ("Gesamt", "root", "Total"):
+                if st.session_state.get("cf_page3_usage") != "Gesamt":
+                    st.session_state.cf_page3_usage = "Gesamt"
+                    st.rerun()
+            else:
+                if clicked_clean != st.session_state.get("cf_page3_usage"):
+                    st.session_state.cf_page3_usage = clicked_clean
+                    st.rerun()
 else:
-    col_tree = st.container()
-    col_donut = None
-
-with col_tree:
-    if element_df is not None and not element_df.empty:
-        fig_tree = create_co2_treemap(element_df)
-        st.plotly_chart(fig_tree, use_container_width=True, key="ov_co2tree")
-    else:
-        st.info("Keine CO₂-Daten verfügbar.")
-
-if col_donut is not None:
-    with col_donut:
-        status_counts = element_df["status"].value_counts()
-        total_el = len(element_df)
-        fig_donut = go.Figure(go.Pie(
-            labels=status_counts.index.tolist(),
-            values=status_counts.values.tolist(),
-            hole=0.58,
-            marker=dict(
-                colors=[STATUS_COLORS.get(s, COLORS["neutral"]) for s in status_counts.index],
-                line=dict(color="white", width=2),
-            ),
-            textinfo="label+percent",
-            hovertemplate="<b>%{label}</b><br>Anzahl: %{value}<br>Anteil: %{percent}<extra></extra>",
-        ))
-        fig_donut.update_layout(
-            title=dict(text="Statusverteilung", font=dict(size=16, color=COLORS["text"]), x=0),
-            paper_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=20, r=20, t=50, b=20),
-            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-            annotations=[dict(
-                text=f"<b>{total_el:,}</b><br><span style='font-size:11px;color:{COLORS['text_light']}'>Elemente</span>",
-                x=0.5, y=0.5, font_size=18, showarrow=False, font_color=COLORS["text"],
-            )],
-        )
-        st.plotly_chart(fig_donut, use_container_width=True, key="ov_donut")
-
-# ── Row 3 (Umbau): Statusverteilung pro IFC-Klasse ─────────────────────────────
-if mode == "umbau" and element_df is not None and "status" in element_df.columns:
-    st.divider()
-    fig_status = create_status_distribution(element_df)
-    st.plotly_chart(fig_status, use_container_width=True, key="ov_status_dist")
+    st.info(
+        "Dieses Modell enthält keine Räume (IfcSpace) für eine Treemap-Flächenverteilung."
+    )

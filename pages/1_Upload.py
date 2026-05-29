@@ -82,7 +82,9 @@ if st.session_state.get("mode_project") == "umbau":
 else:
     pset_config = {
         "pset_name": st.session_state.get("mode_pset_name", ""),
-        "pset_property": st.session_state.get("mode_pset_property", "Renovation Status"),
+        "pset_property": st.session_state.get(
+            "mode_pset_property", "Renovation Status"
+        ),
     }
 
 # Analyse starten button
@@ -119,6 +121,7 @@ if st.button(
             st.write("IFC-Schema erkennen…")
             progress.progress(20)
             from src.ifc_parser import parse_ifc_file
+
             parsed_data = parse_ifc_file(tmp_path)
 
             schema = parsed_data.get("schema", "Unbekannt")
@@ -133,7 +136,9 @@ if st.button(
             st.write("IfcSpace auslesen…")
             space_count = len(parsed_data.get("spaces", []))
             if space_count == 0:
-                warnings.append("IfcSpace nicht gefunden — Seite 3 (Räume & Flächen) ist für dieses Modell nicht verfügbar.")
+                warnings.append(
+                    "IfcSpace nicht gefunden — Seite 3 (Räume & Flächen) ist für dieses Modell nicht verfügbar."
+                )
             st.write(f"   → {space_count} Räume gefunden")
             progress.progress(65)
 
@@ -202,12 +207,15 @@ if st.session_state.get("ifc_parsed"):
 
     st.subheader("Projektinformationen")
     import pandas as pd
+
     meta_rows = {
         "Projektname": metadata.get("project_name", "nicht im Modell hinterlegt"),
         "Autor": metadata.get("author", "nicht im Modell hinterlegt"),
         "Organisation": metadata.get("organization", "nicht im Modell hinterlegt"),
         "IFC-Schema": metadata.get("schema", "–"),
-        "Exportierende Software": metadata.get("application", "nicht im Modell hinterlegt"),
+        "Exportierende Software": metadata.get(
+            "application", "nicht im Modell hinterlegt"
+        ),
     }
     st.table(pd.DataFrame.from_dict(meta_rows, orient="index", columns=["Wert"]))
 
@@ -226,4 +234,5 @@ if st.session_state.get("ifc_parsed"):
             )
 
     from src.filters import render_sidebar
+
     render_sidebar(element_df, space_df, mode)

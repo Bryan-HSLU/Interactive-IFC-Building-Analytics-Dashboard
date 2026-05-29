@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
-from streamlit_plotly_events import plotly_events
-from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
-from src.filters import render_sidebar, render_cross_filter_reset
-from src.chart_factory import (
-    create_quality_gauge,
-    create_error_bar,
-    create_status_distribution, create_pset_matrix_heatmap,
-    create_upset_plot,
+import plotly.graph_objects as go
+from src.state_manager import (
+    init_session_state,
+    get_element_df,
+    get_space_df,
+    get_quality_data,
 )
+from src.filters import render_sidebar, render_cross_filter_reset
+from src.chart_factory import create_pset_lollipop_chart
 from src.quality_checker import build_pset_matrix
 
 init_session_state()
@@ -29,187 +29,383 @@ if not st.session_state.get("ifc_parsed"):
     st.stop()
 
 element_df = get_element_df(filtered=True)
-error_df, quality_summary = get_quality_data()
+space_df = get_space_df(filtered=True)
+
+from src.quality_checker import check_quality, calculate_quality_score
+error_df, quality_summary = check_quality(element_df, space_df, mode)
+quality_summary["score"] = calculate_quality_score(quality_summary)
 
 if not quality_summary:
-    st.title("Quality Check")
+    st.title("Qualitätsprüfung")
     st.warning("Keine Qualitätsdaten verfügbar.")
     st.stop()
 
-st.title("Quality Check")
+st.title("Qualitätsprüfung")
+st.caption("Analysiert wie vollständig und konsistent die IFC-Modelldaten sind.")
 
-# Cross-filter reset
-CF_KEYS = ["cf_page6_error_cat", "cf_page6_status_class"]
+CF_KEYS = ["cf_page6_error_cat"]
 render_cross_filter_reset("page6", CF_KEYS)
-
-# ── Section A: Quality Score ──────────────────────────────────────────────
-col_score, col_traffic = st.columns(2)
 
 score = quality_summary.get("score", 0)
 error_counts = quality_summary.get("error_counts", {})
 total_elements = quality_summary.get("total_elements", 0)
-total_spaces = quality_summary.get("total_spaces", 0)
+total_errors = sum(error_counts.values())
 
-with col_score:
-    fig_gauge = create_quality_gauge(score)
-    st.plotly_chart(fig_gauge, use_container_width=True)
 
-with col_traffic:
-    st.subheader("Quality Indicators")
+def _fmt(n: int) -> str:
+    return f"{n:,}".replace(",", "'")
 
-    def _traffic_light(count: int, label: str, show_always: bool = True):
-        if not show_always and count == 0:
-            return
-        if count == 0:
-            badge = "OK"
-            color = "#D6EAF8"
-            weight = "600"
-        elif count <= 10:
-            badge = "Warning"
-            color = "#FCF3CF"
-            weight = "600"
-        else:
-            badge = "Critical"
-            color = "#FDEBD0"
-            weight = "700"
-        st.markdown(
-            f'<div style="background:{color};border-radius:6px;padding:8px 12px;margin:4px 0;">'
-            f'<b style="font-weight:{weight};">[{badge}] {label}</b>: {count}</div>',
-            unsafe_allow_html=True,
+
+# ── Session State für Fehler-Selektion ────────────────────────────────────────
+if "selected_fehler" not in st.session_state:
+    st.session_state["selected_fehler"] = None
+
+# ── Indicator Config ──────────────────────────────────────────────────────────
+INDICATOR_CONFIG = [
+    ("missing_storey", "Ohne Geschoss", "critical"),
+    ("missing_material", "Ohne Material", "critical"),
+    ("missing_quantity", "Ohne Mengen", "warning"),
+    ("missing_usage", "Räume ohne Nutzung", "warning"),
+]
+if mode == "umbau":
+    INDICATOR_CONFIG.append(("missing_status", "Ohne Status", "warning"))
+
+SEVERITY_COLORS = {"critical": "#E07B39", "warning": "#D4A017", "ok": "#A8D5B5"}
+SEVERITY_LABELS = {"critical": "Critical", "warning": "Warning", "ok": "OK"}
+
+# Baue ein Lookup: Label → (key, value, severity, color)
+indicator_lookup = {}
+for key, lbl, sev in INDICATOR_CONFIG:
+    val = error_counts.get(key, 0)
+    effective_sev = sev if val > 0 else "ok"
+    indicator_lookup[lbl] = {
+        "key": key,
+        "value": val,
+        "severity": sev,
+        "effective_severity": effective_sev,
+        "color": SEVERITY_COLORS[sev] if val > 0 else "#CCCCCC",
+    }
+
+# Sortiere absteigend nach Wert
+rows_sorted = sorted(indicator_lookup.items(), key=lambda r: r[1]["value"], reverse=True)
+labels = [r[0] for r in rows_sorted]
+values = [r[1]["value"] for r in rows_sorted]
+
+selected_fehler = st.session_state.get("selected_fehler")
+
+# ── Farben berechnen (Highlight-Logik) ────────────────────────────────────────
+bar_colors = []
+for lbl in labels:
+    info = indicator_lookup[lbl]
+    if selected_fehler is None:
+        # Kein Filter aktiv → Originalfarben
+        bar_colors.append(info["color"])
+    elif lbl == selected_fehler:
+        # Dieser Balken ist selektiert → Originalfarbe
+        bar_colors.append(info["color"])
+    else:
+        # Alle anderen → Grau
+        bar_colors.append("#CCCCCC")
+
+# ── Layout: KPI links, Balkendiagramm rechts ──────────────────────────────────
+col_kpi, col_bar = st.columns([1, 2])
+
+# ── KPI-Card (dynamisch) ─────────────────────────────────────────────────────
+with col_kpi:
+    if selected_fehler and selected_fehler in indicator_lookup:
+        fehler_info = indicator_lookup[selected_fehler]
+        fehler_count = fehler_info["value"]
+        kpi_title = f"QUALITÄT OHNE<br>{selected_fehler.upper()}"
+        kpi_value = round((total_elements - fehler_count) / total_elements * 100, 1) if total_elements > 0 else 0
+        kpi_subtitle = f"(Gesamt: {score:.1f}%)"
+    else:
+        kpi_title = "MODELLQUALITÄT"
+        kpi_value = score
+        kpi_subtitle = ""
+
+    kpi_bar_width = max(0.0, min(float(kpi_value), 100.0))
+    kpi_bar_color = "#2E86AB" if kpi_value >= 80 else "#E07B39"
+
+    subtitle_html = ""
+    if kpi_subtitle:
+        subtitle_html = f'<div style="color: #999; font-size: 12px; margin-top: 12px;">{kpi_subtitle}</div>'
+
+    st.markdown(
+        f"""
+        <div style="
+            background: #FFFFFF;
+            border: 1px solid #E8E8E8;
+            border-radius: 12px;
+            padding: 28px 24px 22px 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            text-align: center;
+            height: 480px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        ">
+            <div style="color: #888; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px;">
+                {kpi_title}
+            </div>
+            <div style="font-size: 72px; font-weight: 800; color: #1A1A2E; line-height: 1.0; margin-bottom: 24px;">
+                {kpi_value:.1f}<span style="font-size: 34px; font-weight: 600; color: #888;">%</span>
+            </div>
+            <div style="background: #F0F0F0; border-radius: 999px; height: 14px; width: 100%; overflow: hidden;">
+                <div style="
+                    background: {kpi_bar_color};
+                    width: {kpi_bar_width}%;
+                    height: 100%;
+                    border-radius: 999px;
+                    transition: width 0.3s ease;
+                "></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                <span style="font-size: 11px; color: #AAA;">0%</span>
+                <span style="font-size: 11px; color: #AAA;">100%</span>
+            </div>
+            {subtitle_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# ── Horizontales Balkendiagramm (interaktiv) ──────────────────────────────────
+with col_bar:
+    st.subheader("Qualitätsindikatoren")
+    st.caption("Anzahl Elemente mit fehlenden Datenfeldern, nach Schweregrad.")
+
+    # Erweiterte Tooltips mit Schweregrad und Anteil
+    hover_texts = []
+    for lbl in labels:
+        info = indicator_lookup[lbl]
+        val = info["value"]
+        pct = round(val / total_elements * 100, 1) if total_elements > 0 else 0
+        sev_label = SEVERITY_LABELS.get(info["effective_severity"], "OK")
+        hover_texts.append(
+            f"<b>{lbl}</b><br>"
+            f"Anzahl: {val} Elemente<br>"
+            f"Anteil: {pct}% der {_fmt(total_elements)} Gesamtelemente<br>"
+            f"Schweregrad: {sev_label}"
         )
 
-    _traffic_light(error_counts.get("missing_material", 0), "Elements without material")
-    _traffic_light(error_counts.get("missing_quantity", 0), "Elements without quantities")
-    _traffic_light(error_counts.get("missing_usage", 0), "Spaces without usage assignment")
-    _traffic_light(error_counts.get("missing_storey", 0), "Elements without storey assignment")
-    if mode == "umbau":
-        _traffic_light(error_counts.get("missing_status", 0), "Elements without status")
+    fig_hbar = go.Figure(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker=dict(color=bar_colors, line=dict(color="rgba(0,0,0,0)", width=0)),
+            text=[str(v) if v > 0 else "" for v in values],
+            textposition="outside",
+            textfont=dict(size=13, color="#1A1A2E"),
+            hovertext=hover_texts,
+            hoverinfo="text",
+            cliponaxis=False,
+        )
+    )
+    max_val = max(values) if values else 1
+    fig_hbar.update_layout(
+        margin=dict(t=10, b=10, l=10, r=60),
+        height=360,
+        xaxis=dict(
+            title="Anzahl Fehler",
+            showgrid=True,
+            gridcolor="#F0F0F0",
+            zeroline=False,
+            range=[0, max_val * 1.35],
+        ),
+        yaxis=dict(autorange="reversed", tickfont=dict(size=13)),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        bargap=0.35,
+        hoverlabel=dict(bgcolor="white", font_size=12, font_family="Inter, sans-serif"),
+    )
 
-# ── Section B: Error Analysis ───────────────────────────────────────────────
-st.divider()
-col_err, col_status = st.columns(2)
+    event_bar = st.plotly_chart(
+        fig_hbar,
+        use_container_width=True,
+        on_select="rerun",
+        key="quality_bar_chart",
+    )
 
-with col_err:
-    fig_err = create_error_bar(error_counts)
-    sel_err = plotly_events(fig_err, click_event=True, key="cf_p6_error_bar", override_height=380)
-    if sel_err:
-        clicked = sel_err[0].get("x")
-        label_map = {
-            "Kein Material": "missing_material",
-            "Keine Mengen": "missing_quantity",
-            "Kein Geschoss": "missing_storey",
-            "Keine Nutzung": "missing_usage",
-            "Kein Status": "missing_status",
-        }
-        mapped = label_map.get(clicked, clicked)
-        if mapped != st.session_state.get("cf_page6_error_cat"):
-            st.session_state.cf_page6_error_cat = mapped
-            st.rerun()
-        else:
-            st.session_state.cf_page6_error_cat = None
-            st.rerun()
+    # Klick-Interaktion auswerten
+    if event_bar and hasattr(event_bar, "selection") and event_bar.selection:
+        points = event_bar.selection.get("points", [])
+        if points:
+            clicked_label = points[0].get("y")
+            if clicked_label and clicked_label in indicator_lookup:
+                if selected_fehler == clicked_label:
+                    # Gleicher Balken erneut geklickt → Selektion aufheben
+                    st.session_state["selected_fehler"] = None
+                    st.rerun()
+                else:
+                    st.session_state["selected_fehler"] = clicked_label
+                    st.rerun()
 
-with col_status:
-    if mode == "umbau":
-        fig_status = create_status_distribution(element_df)
-        sel_status = plotly_events(fig_status, click_event=True, key="cf_p6_status_bar", override_height=380)
-        if sel_status:
-            clicked = sel_status[0].get("x")
-            if clicked and clicked != st.session_state.get("cf_page6_status_class"):
-                st.session_state.cf_page6_status_class = clicked
-                st.rerun()
-            elif clicked and clicked == st.session_state.get("cf_page6_status_class"):
-                st.session_state.cf_page6_status_class = None
-                st.rerun()
+    if total_errors == 0:
+        st.success(
+            f"Modell vollständig – alle {_fmt(total_elements)} Elemente haben die Pflichtfelder befüllt."
+        )
     else:
-        st.subheader("Pset Completeness by IFC Class")
-        if not element_df.empty and "psets" in element_df.columns:
-            pset_counts = element_df.groupby("ifc_class")["psets"].apply(
-                lambda x: (x.apply(lambda p: len(p) > 0 if isinstance(p, dict) else False)).sum()
-            ).reset_index()
-            pset_counts.columns = ["IFC Class", "Elements with Psets"]
-            total_per_class = element_df["ifc_class"].value_counts().reset_index()
-            total_per_class.columns = ["IFC Class", "Total"]
-            merged = pset_counts.merge(total_per_class, on="IFC Class")
-            merged["Completeness (%)"] = (merged["Elements with Psets"] / merged["Total"] * 100).round(1)
-            st.dataframe(merged, use_container_width=True, hide_index=True)
-        else:
-            st.info("No Pset data available.")
+        st.warning(
+            f"{_fmt(total_errors)} Probleme in {_fmt(total_elements)} Elementen gefunden."
+        )
 
-# ── Section C: UpSet Plot ───────────────────────────────────────────────────
+# ── Detailtabelle bei Fehler-Selektion (volle Breite) ─────────────────────────
+if selected_fehler and selected_fehler in indicator_lookup:
+    fehler_info = indicator_lookup[selected_fehler]
+    fehler_key = fehler_info["key"]
+    fehler_count = fehler_info["value"]
+
+    st.divider()
+
+    if fehler_count == 0:
+        st.success(f"✓ Keine betroffenen Elemente gefunden für «{selected_fehler}».")
+    else:
+        st.markdown(f"#### 🔍 Betroffene Elemente – {selected_fehler}")
+
+        if error_df is not None and not error_df.empty:
+            filtered_errors = error_df[error_df["error_type"] == fehler_key].copy()
+
+            display_cols = {}
+            if "element_id" in filtered_errors.columns:
+                display_cols["element_id"] = "Element-ID"
+            if "ifc_class" in filtered_errors.columns:
+                display_cols["ifc_class"] = "IFC-Klasse"
+            if "storey" in filtered_errors.columns:
+                display_cols["storey"] = "Geschoss"
+            if "description" in filtered_errors.columns:
+                display_cols["description"] = "Fehlertyp"
+
+            display_df = filtered_errors.rename(columns=display_cols)
+            show_cols = [c for c in display_cols.values() if c in display_df.columns]
+
+            st.dataframe(
+                display_df[show_cols],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    if st.button("✕ Auswahl aufheben", key="reset_fehler", use_container_width=True):
+        st.session_state["selected_fehler"] = None
+        st.rerun()
+
 st.divider()
-st.subheader("Error Co-occurrence (UpSet Plot)")
-st.caption(
-    "Which error combinations appear together? "
-    "Each column represents a combination of errors. "
-    "The bars above show how many elements have that combination. "
-    "The dots below indicate which error types are combined."
-)
-if error_df is not None and not error_df.empty:
-    fig_upset = create_upset_plot(error_df)
-    st.plotly_chart(fig_upset, use_container_width=True)
-else:
-    st.success("✅ No errors found — UpSet Plot not needed.")
 
-# ── Section D: Pset Matrix ────────────────────────────────────────────────────
-st.divider()
-st.subheader("Pset Availability Matrix")
-st.caption("Blue = Pset present · Gray = missing")
-
-if not element_df.empty:
+# ── Lollipop Chart + Interaktive KPI-Card ─────────────────────────────────────
+if element_df is not None and not element_df.empty:
     pset_matrix = build_pset_matrix(element_df)
     if pset_matrix is not None and not pset_matrix.empty:
-        if len(pset_matrix.columns) > 15:
-            top_cols = pset_matrix.sum().nlargest(15).index
-            pset_matrix = pset_matrix[top_cols]
-        fig_pset = create_pset_matrix_heatmap(pset_matrix)
-        st.plotly_chart(fig_pset, use_container_width=True)
+        total_psets = len(pset_matrix.columns)
+
+        # Berechne Vollständigkeit pro Klasse für die KPI-Verknüpfung
+        class_completeness = {}
+        class_missing = {}
+        for cls in pset_matrix.index:
+            present = int((pset_matrix.loc[cls] > 0).sum())
+            pct = present / total_psets * 100 if total_psets > 0 else 0
+            class_completeness[cls] = round(pct, 1)
+            class_missing[cls] = total_psets - present
+
+        # Session State initialisieren
+        if "selected_klasse" not in st.session_state:
+            st.session_state["selected_klasse"] = None
+
+        col_lollipop_kpi, col_lollipop_chart = st.columns([1, 2])
+
+        # ── Interaktive KPI-Card (links) ──
+        with col_lollipop_kpi:
+            selected = st.session_state.get("selected_klasse")
+
+            if selected and selected in class_completeness:
+                lollipop_kpi_title = f"PSET-QUALITÄT: {selected}"
+                lollipop_kpi_value = class_completeness[selected]
+                lollipop_kpi_missing = class_missing[selected]
+                lollipop_kpi_subtitle = f"{lollipop_kpi_missing} von {total_psets} Psets fehlen"
+            else:
+                lollipop_kpi_title = "PSET-QUALITÄT (GESAMT)"
+                overall = (
+                    sum(class_completeness.values()) / len(class_completeness)
+                    if class_completeness
+                    else 0
+                )
+                lollipop_kpi_value = round(overall, 1)
+                lollipop_kpi_subtitle = f"Ø über {len(class_completeness)} IFC-Klassen"
+
+            lollipop_bar_width = max(0.0, min(float(lollipop_kpi_value), 100.0))
+            lollipop_bar_color = "#2E86AB" if lollipop_kpi_value >= 50 else "#E07B39"
+
+            st.markdown(
+                f"""
+                <div style="
+                    background: #FFFFFF;
+                    border: 1px solid #E8E8E8;
+                    border-radius: 12px;
+                    padding: 28px 24px 22px 24px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+                    text-align: center;
+                    min-height: 320px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                ">
+                    <div style="color: #888; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px; word-break: break-word;">
+                        {lollipop_kpi_title}
+                    </div>
+                    <div style="font-size: 64px; font-weight: 800; color: #1A1A2E; line-height: 1.0; margin-bottom: 16px;">
+                        {lollipop_kpi_value:.1f}<span style="font-size: 30px; font-weight: 600; color: #888;">%</span>
+                    </div>
+                    <div style="background: #F0F0F0; border-radius: 999px; height: 12px; width: 100%; overflow: hidden;">
+                        <div style="
+                            background: {lollipop_bar_color};
+                            width: {lollipop_bar_width}%;
+                            height: 100%;
+                            border-radius: 999px;
+                            transition: width 0.3s ease;
+                        "></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                        <span style="font-size: 11px; color: #AAA;">0%</span>
+                        <span style="font-size: 11px; color: #AAA;">100%</span>
+                    </div>
+                    <div style="color: #999; font-size: 12px; margin-top: 12px;">
+                        {lollipop_kpi_subtitle}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if selected:
+                if st.button(
+                    "↩ Gesamtansicht",
+                    key="reset_klasse",
+                    use_container_width=True,
+                ):
+                    st.session_state["selected_klasse"] = None
+                    st.rerun()
+
+        # ── Lollipop Chart (rechts) ──
+        with col_lollipop_chart:
+            fig_lollipop = create_pset_lollipop_chart(pset_matrix)
+            event_lollipop = st.plotly_chart(
+                fig_lollipop,
+                use_container_width=True,
+                on_select="rerun",
+                key="lollipop_chart",
+            )
+
+            # Klick-Interaktion auswerten
+            if event_lollipop and hasattr(event_lollipop, "selection") and event_lollipop.selection:
+                points = event_lollipop.selection.get("points", [])
+                if points:
+                    point = points[0]
+                    clicked_class = point.get("y")
+                    if clicked_class and clicked_class in class_completeness:
+                        if st.session_state.get("selected_klasse") != clicked_class:
+                            st.session_state["selected_klasse"] = clicked_class
+                            st.rerun()
     else:
-        st.info("No Pset data available for matrix.")
-
-# ── Section E: Error Detail Table ─────────────────────────────────────────────
-st.divider()
-st.subheader("Error Details")
-
-if error_df is not None and not error_df.empty:
-    table_df = error_df.copy()
-
-    cf_cat = st.session_state.get("cf_page6_error_cat")
-    cf_cls = st.session_state.get("cf_page6_status_class")
-
-    if cf_cat and "error_type" in table_df.columns:
-        table_df = table_df[table_df["error_type"] == cf_cat]
-    if cf_cls and "ifc_class" in table_df.columns:
-        table_df = table_df[table_df["ifc_class"] == cf_cls]
-
-    col_rename = {
-        "element_id": "Element ID",
-        "ifc_class": "IFC Class",
-        "storey": "Storey",
-        "error_type": "Error Type",
-        "severity": "Severity",
-        "description": "Description",
-    }
-    display_df = table_df.rename(columns=col_rename)
-
-    def _color_severity(val):
-        if val == "critical":
-            return "color: #A04000; font-weight: bold"
-        elif val == "warning":
-            return "color: #E67E22"
-        return ""
-
-    if "Severity" in display_df.columns:
-        st.dataframe(
-            # Fix: applymap was removed in pandas 3.x, use map instead
-            display_df.style.map(_color_severity, subset=["Severity"]),
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-    if mode == "umbau" and error_counts.get("missing_status", 0) > 0:
-        st.warning("⚠️ Calculations on Page 5 may be incomplete due to missing status data.")
+        st.info("Keine Pset-Daten verfügbar.")
 else:
-    st.success("✅ No errors found.")
+    st.info("Keine Elementdaten verfügbar.")

@@ -1,14 +1,30 @@
 import ifcopenshell
 import pandas as pd
+import re
 from typing import Optional
-
+from src.constants import IFC_STANDARD_CROSS_SECTIONS, IFC_STANDARD_THICKNESSES
 
 BUILDING_ELEMENT_TYPES = [
-    "IfcWall", "IfcWallStandardCase", "IfcSlab", "IfcColumn", "IfcBeam",
-    "IfcDoor", "IfcWindow", "IfcRoof", "IfcStair", "IfcStairFlight",
-    "IfcRailing", "IfcCovering", "IfcCurtainWall", "IfcPlate", "IfcMember",
-    "IfcBuildingElementProxy", "IfcFlowSegment", "IfcFlowTerminal",
-    "IfcFlowFitting", "IfcEnergyConversionDevice",
+    "IfcWall",
+    "IfcWallStandardCase",
+    "IfcSlab",
+    "IfcColumn",
+    "IfcBeam",
+    "IfcDoor",
+    "IfcWindow",
+    "IfcRoof",
+    "IfcStair",
+    "IfcStairFlight",
+    "IfcRailing",
+    "IfcCovering",
+    "IfcCurtainWall",
+    "IfcPlate",
+    "IfcMember",
+    "IfcBuildingElementProxy",
+    "IfcFlowSegment",
+    "IfcFlowTerminal",
+    "IfcFlowFitting",
+    "IfcEnergyConversionDevice",
 ]
 
 
@@ -44,9 +60,67 @@ def _build_storey_map(model) -> dict:
                 storey_name = structure.Name or f"Geschoss {structure.id()}"
                 for element in rel.RelatedElements:
                     element_to_storey[element.id()] = storey_name
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         pass
     return element_to_storey
+
+
+def _parse_archicad_co2(value) -> Optional[float]:
+    """Parse ArchiCAD CO2 string like '787.19 kgCO220820' → 787.19"""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        pass
+    match = re.match(r"^\s*([\d]+(?:[.,]\d+)?)", str(value))
+    if match:
+        try:
+            return float(match.group(1).replace(",", "."))
+        except ValueError:
+            pass
+    return None
+
+
+def _estimate_volume(quantities: dict, ifc_class: str) -> Optional[float]:
+    """
+    Fallback-Volumenberechnung wenn kein IfcQuantityVolume vorhanden.
+    Strategie:
+      1. Fläche × Dicke aus Pset (Wandstärke, Slab-Dicke)
+      2. Länge × Annahme-Querschnitt für Balken/Stützen
+      3. Fläche × Standarddicke pro IFC-Klasse als letzter Fallback
+    """
+    area = quantities.get("area")
+    length = quantities.get("length")
+    thickness = quantities.get("thickness")
+
+    # 1. Fläche × Dicke (Wand, Decke, Boden)
+    if area and thickness:
+        try:
+            return float(area) * float(thickness)
+        except (TypeError, ValueError):
+            pass
+
+    # 2. Länge × Standard-Querschnitt für Stabwerkelemente
+    if length:
+        try:
+            l = float(length)
+            # HEB 200 ≈ 0.0054 m² Querschnitt als Durchschnittswert
+            cross_section = IFC_STANDARD_CROSS_SECTIONS.get(ifc_class, 0.004)
+            return l * cross_section
+        except (TypeError, ValueError):
+            pass
+
+    # 3. Fläche × Standarddicke als letzter Fallback
+    if area:
+        try:
+            a = float(area)
+            default_thickness = IFC_STANDARD_THICKNESSES.get(ifc_class, 0.10)
+            return a * default_thickness
+        except (TypeError, ValueError):
+            pass
+
+    return None
 
 
 def extract_elements(model, element_to_storey: dict) -> list[dict]:
@@ -61,24 +135,55 @@ def extract_elements(model, element_to_storey: dict) -> list[dict]:
                 seen_ids.add(element.id())
 
                 psets = extract_psets(element)
-                quantities = extract_quantities(element)
+                quantities = extract_quantities(element, psets)
                 materials = extract_materials(element)
 
-                elements.append({
-                    "element_id": element.id(),
-                    "global_id": getattr(element, "GlobalId", ""),
-                    "ifc_class": element.is_a(),
-                    "type_name": _get_type_name(element),
-                    "storey": element_to_storey.get(element.id(), "Nicht zugeordnet"),
-                    "material": materials[0] if materials else "Unbekannt",
-                    "materials_all": materials,
-                    "psets": psets,
-                    "area_m2": quantities.get("area"),
-                    "volume_m3": quantities.get("volume"),
-                    "length_m": quantities.get("length"),
-                    "weight_kg": quantities.get("weight"),
-                })
-        except Exception:
+                # ── Extract embedded ArchiCAD CO2 & energy values ──────────
+                co2_archicad = None
+                energy_archicad = None
+                for pset_name, pset_data in psets.items():
+                    if co2_archicad is None:
+                        raw_co2 = pset_data.get("Enthaltenes CO2") or pset_data.get(
+                            "Enthaltenes CO2 (kgCO2eq)"
+                        )
+                        co2_archicad = _parse_archicad_co2(raw_co2)
+                    if energy_archicad is None:
+                        raw_energy = pset_data.get(
+                            "Enthaltene Energie"
+                        ) or pset_data.get("Enthaltene Energie (kWh)")
+                        if raw_energy is not None:
+                            try:
+                                energy_archicad = float(raw_energy)
+                            except (TypeError, ValueError):
+                                pass
+
+                volume = quantities.get("volume")
+
+                # ── Volumen-Fallback wenn kein IfcQuantityVolume vorhanden ──
+                if volume is None:
+                    volume = _estimate_volume(quantities, element.is_a())
+
+                elements.append(
+                    {
+                        "element_id": element.id(),
+                        "global_id": getattr(element, "GlobalId", ""),
+                        "ifc_class": element.is_a(),
+                        "type_name": _get_type_name(element),
+                        "storey": element_to_storey.get(
+                            element.id(), "Nicht zugeordnet"
+                        ),
+                        "material": materials[0] if materials else "Unbekannt",
+                        "materials_all": materials,
+                        "psets": psets,
+                        "area_m2": quantities.get("area"),
+                        "volume_m3": volume,
+                        "length_m": quantities.get("length"),
+                        "weight_kg": quantities.get("weight"),
+                        "co2e_archicad": co2_archicad,
+                        "grey_energy_archicad": energy_archicad,
+                    }
+                )
+        except (AttributeError, KeyError, TypeError, ValueError):
             continue
 
     return elements
@@ -89,11 +194,13 @@ def extract_spaces(model, element_to_storey: dict) -> list[dict]:
     try:
         for space in model.by_type("IfcSpace"):
             psets = extract_psets(space)
-            quantities = extract_quantities(space)
+            quantities = extract_quantities(space, psets)
 
             area = quantities.get("area")
             if area is None:
-                area = _get_pset_value(psets, ["Pset_SpaceCommon", "BaseQuantities"], "NetFloorArea")
+                area = _get_pset_value(
+                    psets, ["Pset_SpaceCommon", "BaseQuantities"], "NetFloorArea"
+                )
 
             volume = quantities.get("volume")
             height = None
@@ -106,18 +213,22 @@ def extract_spaces(model, element_to_storey: dict) -> list[dict]:
                 or "Unbekannt"
             )
 
-            spaces.append({
-                "space_id": space.id(),
-                "name": getattr(space, "Name", None) or f"Raum {space.id()}",
-                "long_name": getattr(space, "LongName", None) or getattr(space, "Name", None) or f"Raum {space.id()}",
-                "storey": element_to_storey.get(space.id(), "Nicht zugeordnet"),
-                "usage": usage if usage else "Unbekannt",
-                "area_m2": area,
-                "volume_m3": volume,
-                "height_m": height,
-                "psets": psets,
-            })
-    except Exception:
+            spaces.append(
+                {
+                    "space_id": space.id(),
+                    "name": getattr(space, "Name", None) or f"Raum {space.id()}",
+                    "long_name": getattr(space, "LongName", None)
+                    or getattr(space, "Name", None)
+                    or f"Raum {space.id()}",
+                    "storey": element_to_storey.get(space.id(), "Nicht zugeordnet"),
+                    "usage": usage if usage else "Unbekannt",
+                    "area_m2": area,
+                    "volume_m3": volume,
+                    "height_m": height,
+                    "psets": psets,
+                }
+            )
+    except (AttributeError, KeyError, TypeError, ValueError):
         pass
     return spaces
 
@@ -126,12 +237,14 @@ def extract_storeys(model) -> list[dict]:
     storeys = []
     try:
         for storey in model.by_type("IfcBuildingStorey"):
-            storeys.append({
-                "name": storey.Name or f"Geschoss {storey.id()}",
-                "elevation": getattr(storey, "Elevation", 0) or 0,
-            })
+            storeys.append(
+                {
+                    "name": storey.Name or f"Geschoss {storey.id()}",
+                    "elevation": getattr(storey, "Elevation", 0) or 0,
+                }
+            )
         storeys.sort(key=lambda s: s["elevation"])
-    except Exception:
+    except (AttributeError, TypeError):
         pass
     return storeys
 
@@ -147,17 +260,21 @@ def extract_psets(element) -> dict:
                     for prop in prop_set.HasProperties:
                         if prop.is_a("IfcPropertySingleValue"):
                             try:
-                                val = prop.NominalValue.wrappedValue if prop.NominalValue else None
-                            except Exception:
+                                val = (
+                                    prop.NominalValue.wrappedValue
+                                    if prop.NominalValue
+                                    else None
+                                )
+                            except (AttributeError, ValueError):
                                 val = None
                             pset_data[prop.Name] = val
                     psets[prop_set.Name] = pset_data
-    except Exception:
+    except (AttributeError, TypeError):
         pass
     return psets
 
 
-def extract_quantities(element) -> dict:
+def extract_quantities(element, psets: dict = None) -> dict:
     quantities = {}
     try:
         for rel in element.IsDefinedBy:
@@ -168,16 +285,51 @@ def extract_quantities(element) -> dict:
                         try:
                             if q.is_a("IfcQuantityArea") and "area" not in quantities:
                                 quantities["area"] = q.AreaValue
-                            elif q.is_a("IfcQuantityVolume") and "volume" not in quantities:
+                            elif (
+                                q.is_a("IfcQuantityVolume")
+                                and "volume" not in quantities
+                            ):
                                 quantities["volume"] = q.VolumeValue
-                            elif q.is_a("IfcQuantityLength") and "length" not in quantities:
+                            elif (
+                                q.is_a("IfcQuantityLength")
+                                and "length" not in quantities
+                            ):
                                 quantities["length"] = q.LengthValue
-                            elif q.is_a("IfcQuantityWeight") and "weight" not in quantities:
+                            elif (
+                                q.is_a("IfcQuantityWeight")
+                                and "weight" not in quantities
+                            ):
                                 quantities["weight"] = q.WeightValue
                         except Exception:
                             continue
     except Exception:
         pass
+
+    # ── Pset-Fallback für Dicke (wird später in _estimate_volume gebraucht) ──
+    if psets and "thickness" not in quantities:
+        thickness_keys = [
+            "Width",
+            "Thickness",
+            "Breite",
+            "Dicke",
+            "WallThickness",
+            "SlabThickness",
+            "OverallThickness",
+        ]
+        for pset_data in psets.values():
+            for key in thickness_keys:
+                val = pset_data.get(key)
+                if val is not None:
+                    try:
+                        t = float(val)
+                        if 0.001 < t < 5.0:  # Plausibilitätsprüfung: 1 mm – 5 m
+                            quantities["thickness"] = t
+                            break
+                    except (TypeError, ValueError):
+                        pass
+            if "thickness" in quantities:
+                break
+
     return quantities
 
 
@@ -206,7 +358,7 @@ def extract_materials(element) -> list[str]:
                     for constituent in mat.MaterialConstituents:
                         if constituent.Material and constituent.Material.Name:
                             materials.append(constituent.Material.Name)
-    except Exception:
+    except (AttributeError, TypeError):
         pass
     return materials if materials else ["Unbekannt"]
 
@@ -246,7 +398,7 @@ def get_model_metadata(model) -> dict:
         metadata["element_count"] = len(model.by_type("IfcBuildingElement"))
         metadata["space_count"] = len(model.by_type("IfcSpace"))
         metadata["storey_count"] = len(model.by_type("IfcBuildingStorey"))
-    except Exception:
+    except (AttributeError, IndexError):
         pass
     return metadata
 

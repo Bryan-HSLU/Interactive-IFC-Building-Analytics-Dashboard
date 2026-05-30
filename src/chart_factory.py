@@ -91,25 +91,11 @@ def _empty_fig(message: str) -> go.Figure:
 # ── Helper to resolve consistent Room Colors ─────────────────────────────────
 
 
-def _get_room_color(usage: str, force_orange: bool = False) -> str:
+def _get_room_color(usage: str) -> str:
     usage_lower = str(usage).lower().strip()
 
     if "gesamt" in usage_lower or "root" in usage_lower or "total" in usage_lower:
-        return "#E67E22"
-
-    if force_orange:
-        if "veloraum" in usage_lower:
-            return "#D35400"
-        elif "bar" in usage_lower or "empfang" in usage_lower:
-            return "#E67E22"
-        elif "saal" in usage_lower:
-            return "#F39C12"
-        elif "restaurant" in usage_lower:
-            return "#FF9800"
-        elif "warteraum" in usage_lower:
-            return "#FFA726"
-        else:
-            return "#FFB74D"
+        return "#1B3A5B"  # Brand Tiefblau für Gesamt
 
     # Try mapping to RAUM_GRUPPEN first
     for key, (group, color) in RAUM_GRUPPEN.items():
@@ -119,7 +105,7 @@ def _get_room_color(usage: str, force_orange: bool = False) -> str:
     for key, color in ROOM_COLORS.items():
         if key.lower() in usage_lower:
             return color
-    return ROOM_COLORS.get("Andere", "#CCCCCC")
+    return ROOM_COLORS.get("Andere", "#C9CDD3")
 
 
 # ── Treemap: "Welcher Raumtyp nimmt wie viel Fläche ein?" ──────────────────
@@ -145,19 +131,16 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
         rest_row = pd.DataFrame([{"usage": "Andere", "area_m2": rest_val}])
         agg = pd.concat([top, rest_row], ignore_index=True)
 
-    cf_usage = st.session_state.get("cf_page3_usage")
-    force_orange = cf_usage == "Gesamt"
-
     labels = ["<b>Gesamt</b>"]
     parents = [""]
     values = [agg["area_m2"].sum()]
-    colors = [_get_room_color("<b>Gesamt</b>", force_orange)]
+    colors = [_get_room_color("<b>Gesamt</b>")]
 
     for _, row in agg.iterrows():
         labels.append(row["usage"])
         parents.append("<b>Gesamt</b>")
         values.append(row["area_m2"])
-        colors.append(_get_room_color(row["usage"], force_orange))
+        colors.append(_get_room_color(row["usage"]))
 
     fig = go.Figure(
         go.Treemap(
@@ -308,24 +291,9 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
     min_v, max_v = min(vals), max(vals)
     span = (max_v - min_v) if max_v != min_v else 1.0
 
-    colors = []
-    for v in vals:
-        scaled = (v - min_v) / span
-        if scaled < 0.5:
-            t = scaled / 0.5
-            r = int(168 + t * (245 - 168))
-            g = int(213 + t * (230 - 213))
-            b = int(181 + t * (66 - 181))
-        else:
-            t = (scaled - 0.5) / 0.5
-            r = int(245 + t * (217 - 245))
-            g = int(230 + t * (79 - 230))
-            b = int(66 + t * (61 - 66))
-        colors.append(f"rgb({r},{g},{b})")
-
     final_colors = [
-        "#BDC3C7" if mat == "Andere" else col
-        for mat, col in zip(agg["material"].tolist(), colors)
+        _MATERIAL_GROUP_COLORS.get(mat, "#C9CDD3")
+        for mat in agg["material"].tolist()
     ]
 
     fig = go.Figure(
@@ -813,7 +781,7 @@ def create_pset_matrix_heatmap(pset_matrix: pd.DataFrame) -> go.Figure:
             z=z,
             x=classes_sorted,
             y=psets_sorted,
-            colorscale=[[0, "#E07B39"], [1, "#2E86AB"]],
+            colorscale=[[0, "#FFFFFF"], [1, "#2E86AB"]],
             showscale=False,
             hovertemplate="Klasse: %{x}<br>Pset: %{y}<br>%{text}<extra></extra>",
             text=hover_text,
@@ -1054,3 +1022,256 @@ def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = Non
     )
     return fig
 
+def create_co2_pareto(element_df: pd.DataFrame) -> go.Figure:
+    if element_df is None or element_df.empty or "co2e_total" not in element_df.columns:
+        return _empty_fig("Keine CO₂-Daten verfügbar")
+    
+    df_m = element_df.dropna(subset=["co2e_total", "material"]).copy()
+    if df_m.empty:
+        return _empty_fig("Keine Materialien mit CO₂")
+        
+    df_m["co2_num"] = pd.to_numeric(df_m["co2e_total"], errors="coerce").fillna(0)
+    agg = df_m.groupby("material")["co2_num"].sum().sort_values(ascending=False).reset_index()
+    agg = agg[agg["co2_num"] > 0]
+    if agg.empty:
+        return _empty_fig("CO₂-Wert ist 0")
+        
+    total_co2 = agg["co2_num"].sum()
+    agg["cum_pct"] = agg["co2_num"].cumsum() / total_co2 * 100
+    
+    fig = go.Figure()
+    
+    colors = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in agg["material"]]
+    
+    # Bar for absolute CO2
+    fig.add_trace(
+        go.Bar(
+            x=agg["material"],
+            y=agg["co2_num"],
+            marker_color=colors,
+            name="CO₂-Last",
+            hovertemplate="Material: %{x}<br>CO₂: %{y:,.0f} kg<extra></extra>"
+        )
+    )
+    
+    # Line for cumulative %
+    fig.add_trace(
+        go.Scatter(
+            x=agg["material"],
+            y=agg["cum_pct"],
+            mode="lines+markers",
+            name="Kumuliert %",
+            yaxis="y2",
+            line=dict(color=COLORS["text"], width=2),
+            marker=dict(size=6, color=COLORS["text"]),
+            hovertemplate="Material: %{x}<br>Kumuliert: %{y:.1f}%<extra></extra>"
+        )
+    )
+    
+    fig = apply_default_layout(fig, "")
+    
+    # Add 80% line
+    fig.add_shape(
+        type="line",
+        x0=0, x1=1, xref="paper",
+        y0=80, y1=80, yref="y2",
+        line=dict(color=COLORS["error_critical"], width=1, dash="dash"),
+    )
+    
+    fig.update_layout(
+        yaxis2=dict(
+            title="Kumuliert %",
+            overlaying="y",
+            side="right",
+            range=[0, 105],
+            gridcolor="rgba(0,0,0,0)",
+            tickfont=dict(size=11, color=COLORS["text_light"])
+        ),
+        showlegend=False,
+        margin=dict(r=50) # make room for right yaxis
+    )
+    
+    return fig
+
+def create_sia_gauge(co2_per_m2: float, limit: float = 11.0) -> go.Figure:
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=co2_per_m2,
+        number={"valueformat": ".1f", "suffix": " kg"},
+        delta={"reference": limit, "increasing": {"color": COLORS["error_critical"]}, "decreasing": {"color": COLORS["error_ok"]}},
+        title={"text": "CO₂e pro m²·a", "font": {"size": 14, "color": COLORS["text_light"]}},
+        gauge={
+            "axis": {"range": [None, max(limit * 1.5, co2_per_m2 * 1.2)], "tickwidth": 1, "tickcolor": COLORS["text_light"]},
+            "bar": {"color": COLORS["text"]},
+            "bgcolor": "white",
+            "borderwidth": 2,
+            "bordercolor": "gray",
+            "steps": [
+                {"range": [0, limit * 0.8], "color": CO2_SCALE[0]},
+                {"range": [limit * 0.8, limit], "color": CO2_SCALE[1]},
+                {"range": [limit, max(limit * 1.5, co2_per_m2 * 1.2)], "color": CO2_SCALE[2]}
+            ],
+            "threshold": {
+                "line": {"color": "black", "width": 4},
+                "thickness": 0.75,
+                "value": limit
+            }
+        }
+    ))
+    fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
+    return fig
+
+def create_storey_material_heatmap(element_df: pd.DataFrame) -> go.Figure:
+    if element_df is None or element_df.empty or "storey" not in element_df.columns or "co2e_total" not in element_df.columns:
+        return _empty_fig("Daten für Heatmap fehlen")
+        
+    df_m = element_df.dropna(subset=["storey", "grouped_material", "co2e_total"]).copy()
+    df_m["co2_num"] = pd.to_numeric(df_m["co2e_total"], errors="coerce").fillna(0)
+    
+    pivot = df_m.pivot_table(index="storey", columns="grouped_material", values="co2_num", aggfunc="sum").fillna(0)
+    if pivot.empty:
+        return _empty_fig("Keine Daten nach Filterung")
+        
+    # Sort storeys nicely if they have numbers
+    storeys_sorted = sorted(pivot.index.tolist())
+    pivot = pivot.reindex(storeys_sorted)
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=pivot.values,
+        x=pivot.columns.tolist(),
+        y=pivot.index.tolist(),
+        colorscale=[[0, "#FFFFFF"], [1, COLORS["error_critical"]]],
+        hovertemplate="Geschoss: %{y}<br>Material: %{x}<br>CO₂: %{z:,.0f} kg<extra></extra>",
+        showscale=True
+    ))
+    
+    fig = apply_default_layout(fig, "")
+    return fig
+
+def create_renovation_waterfall(element_df: pd.DataFrame) -> go.Figure:
+    if element_df is None or element_df.empty or "status" not in element_df.columns or "co2e_total" not in element_df.columns:
+        return _empty_fig("Status oder CO₂-Daten fehlen")
+        
+    df_m = element_df.dropna(subset=["status", "co2e_total"]).copy()
+    df_m["co2_num"] = pd.to_numeric(df_m["co2e_total"], errors="coerce").fillna(0)
+    
+    agg = df_m.groupby("status")["co2_num"].sum()
+    
+    bestand = agg.get("Bestand", 0)
+    abbruch = agg.get("Abbruch", 0)
+    neubau = agg.get("Neubau", 0)
+    
+    fig = go.Figure(go.Waterfall(
+        name="Umbau Waterfall", orientation="v",
+        measure=["relative", "relative", "relative", "total"],
+        x=["Bestand (Erhalten)", "Abbruch (Verloren)", "Neubau (Hinzugefügt)", "Netto-Bilanz"],
+        textposition="outside",
+        text=[f"{bestand:,.0f}", f"-{abbruch:,.0f}", f"+{neubau:,.0f}", f"{bestand-abbruch+neubau:,.0f}"],
+        y=[bestand, -abbruch, neubau, bestand-abbruch+neubau],
+        connector={"line":{"color":COLORS["text_light"]}},
+        decreasing={"marker":{"color":COLORS["abbruch"]}},
+        increasing={"marker":{"color":COLORS["neubau"]}},
+        totals={"marker":{"color":COLORS["text"]}}
+    ))
+    
+    fig = apply_default_layout(fig, "")
+    fig.update_layout(showlegend=False)
+    return fig
+
+def create_cost_co2_scatter(element_df: pd.DataFrame) -> go.Figure:
+    if element_df is None or element_df.empty or "cost_chf" not in element_df.columns or "co2e_total" not in element_df.columns:
+        return _empty_fig("Kosten oder CO₂-Daten fehlen")
+        
+    df_m = element_df.dropna(subset=["grouped_material", "cost_chf", "co2e_total", "volume_m3"]).copy()
+    if df_m.empty:
+        return _empty_fig("Daten unvollständig")
+        
+    df_m["cost_num"] = pd.to_numeric(df_m["cost_chf"], errors="coerce").fillna(0)
+    df_m["co2_num"] = pd.to_numeric(df_m["co2e_total"], errors="coerce").fillna(0)
+    df_m["vol_num"] = pd.to_numeric(df_m["volume_m3"], errors="coerce").fillna(0)
+    
+    # Aggregate by material group
+    agg = df_m.groupby("grouped_material").agg({"cost_num": "sum", "co2_num": "sum", "vol_num": "sum"}).reset_index()
+    agg = agg[(agg["cost_num"]>0) | (agg["co2_num"]>0)]
+    
+    colors = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in agg["grouped_material"]]
+    
+    fig = go.Figure(data=go.Scatter(
+        x=agg["cost_num"],
+        y=agg["co2_num"],
+        mode="markers+text",
+        text=agg["grouped_material"],
+        textposition="top center",
+        marker=dict(
+            size=agg["vol_num"],
+            sizemode="area",
+            sizeref=2.*max(agg["vol_num"])/(40.**2) if max(agg["vol_num"])>0 else 1,
+            sizemin=4,
+            color=colors,
+            line=dict(width=1, color=COLORS["text"])
+        ),
+        hovertemplate="<b>%{text}</b><br>Kosten: CHF %{x:,.0f}<br>CO₂: %{y:,.0f} kg<br>Volumen: %{marker.size:,.1f} m³<extra></extra>"
+    ))
+    
+    fig = apply_default_layout(fig, "")
+    fig.update_xaxes(title="Kosten (CHF)")
+    fig.update_yaxes(title="CO₂e (kg)")
+    return fig
+
+def create_cost_breakdown_bar(element_df: pd.DataFrame) -> go.Figure:
+    if element_df is None or element_df.empty or "cost_chf" not in element_df.columns:
+        return _empty_fig("Keine Kostendaten")
+        
+    df_m = element_df.dropna(subset=["grouped_material", "cost_chf"]).copy()
+    df_m["cost_num"] = pd.to_numeric(df_m["cost_chf"], errors="coerce").fillna(0)
+    
+    agg = df_m.groupby("grouped_material")["cost_num"].sum().sort_values(ascending=True)
+    agg = agg[agg>0]
+    
+    if agg.empty:
+        return _empty_fig("Kosten sind 0")
+        
+    colors = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in agg.index]
+    
+    fig = go.Figure(go.Bar(
+        x=agg.values,
+        y=agg.index,
+        orientation="h",
+        marker_color=colors,
+        text=[f"CHF {v:,.0f}" for v in agg.values],
+        textposition="auto",
+        hovertemplate="%{y}: CHF %{x:,.0f}<extra></extra>"
+    ))
+    
+    fig = apply_default_layout(fig, "")
+    fig.update_layout(xaxis_title="Kosten (CHF)")
+    return fig
+
+def create_circularity_donut(element_df: pd.DataFrame) -> go.Figure:
+    if element_df is None or element_df.empty or "status" not in element_df.columns or "volume_m3" not in element_df.columns:
+        return _empty_fig("Status oder Volumen fehlen")
+        
+    df_m = element_df.dropna(subset=["status", "volume_m3"]).copy()
+    df_m["vol_num"] = pd.to_numeric(df_m["volume_m3"], errors="coerce").fillna(0)
+    
+    agg = df_m.groupby("status")["vol_num"].sum()
+    if agg.sum() == 0:
+        return _empty_fig("Volumen ist 0")
+        
+    fig = go.Figure(go.Pie(
+        labels=agg.index.tolist(),
+        values=agg.values.tolist(),
+        hole=0.6,
+        marker=dict(colors=[STATUS_COLORS.get(s, "#C9CDD3") for s in agg.index]),
+        textinfo="label+percent",
+        hovertemplate="%{label}<br>Volumen: %{value:,.1f} m³<br>Anteil: %{percent}<extra></extra>"
+    ))
+    
+    bestand_pct = (agg.get("Bestand", 0) / agg.sum()) * 100
+    fig.add_annotation(
+        text=f"<b>{bestand_pct:.0f}%</b><br>Erhalt",
+        x=0.5, y=0.5, font=dict(size=20), showarrow=False
+    )
+    
+    fig.update_layout(margin=dict(t=20, b=20, l=20, r=20), showlegend=False)
+    return fig

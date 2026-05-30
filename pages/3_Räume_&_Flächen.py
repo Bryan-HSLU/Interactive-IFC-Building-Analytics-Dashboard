@@ -173,17 +173,17 @@ if not table_df.empty:
             x = float(val)
             max_val = display_df["CO₂-Last (kg)"].max() or 1.0
             pct = min(1.0, max(0.0, x / max_val))
-            # Interpolation between #A8D5B5 (Green, 0%) -> #F5E642 (Yellow, 50%) -> #D94F3D (Red, 100%)
+            # Interpolation between #FFF3B0 (0%) -> #FCA311 (50%) -> #D62828 (100%)
             if pct < 0.5:
                 t = pct / 0.5
-                r = int(168 + t * (245 - 168))
-                g = int(213 + t * (230 - 213))
-                b = int(181 + t * (66 - 181))
+                r = int(255 + t * (252 - 255))
+                g = int(243 + t * (163 - 243))
+                b = int(176 + t * (17 - 176))
             else:
                 t = (pct - 0.5) / 0.5
-                r = int(245 + t * (217 - 245))
-                g = int(230 + t * (79 - 230))
-                b = int(66 + t * (61 - 66))
+                r = int(252 + t * (214 - 252))
+                g = int(163 + t * (40 - 163))
+                b = int(17 + t * (40 - 17))
             return f"background-color: rgb({r},{g},{b}); color: #2D2D2D; font-weight: bold;"
         except Exception:
             return ""

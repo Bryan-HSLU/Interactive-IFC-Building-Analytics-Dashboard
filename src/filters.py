@@ -80,6 +80,13 @@ def render_sidebar(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
             active.append(f"Status: {st.session_state.filter_status}")
         if active:
             st.sidebar.info("Aktive Filter:\n" + "\n".join(f"- {a}" for a in active))
+            try:
+                from src.state_manager import get_element_df
+                df_f = get_element_df(filtered=True)
+                if df_f is not None and element_df is not None:
+                    st.sidebar.caption(f"Angezeigt: {len(df_f):,} von {len(element_df):,} Elementen")
+            except Exception:
+                pass
 
         st.divider()
 

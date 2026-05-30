@@ -5,6 +5,7 @@ from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
     create_material_volume_bar,
     create_element_material_stacked_bar,
+    create_storey_material_heatmap,
 )
 from src.ui_helpers import apply_unit_conversion, unit_caption
 from src.constants import COLORS
@@ -34,7 +35,6 @@ if element_df is None or element_df.empty:
     st.stop()
 
 st.title("Bauteile & Mengen")
-st.caption("Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
 
 _u_area = st.session_state.get("unit_area", "m\u00b2")
 _u_volume = st.session_state.get("unit_volume", "m\u00b3")
@@ -93,6 +93,20 @@ if not element_df_all.empty and "grouped_material" in element_df_all.columns:
             .nlargest(5)
             .index.tolist()
         )
+        
+        # Dynamic caption
+        agg_vol = df_valid.groupby("grouped_material")[vol_col].sum()
+        tot_vol = agg_vol.sum()
+        if tot_vol > 0:
+            top_4 = agg_vol.nlargest(4)
+            pct_top = (top_4.sum() / tot_vol) * 100
+            st.caption(f"{len(top_4)} Materialien = {pct_top:.0f} % des Volumens")
+        else:
+            st.caption("Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
+    else:
+        st.caption("Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
+else:
+    st.caption("Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
 
 # Now apply material & class filter for KPIs, stacked bar, and table
 if cf_class and "ifc_class" in element_df.columns:
@@ -187,6 +201,12 @@ fig_stacked.update_layout(
     margin=dict(l=50, r=20, t=80, b=50),
 )
 st.plotly_chart(fig_stacked, use_container_width=True, key="p4_stacked_bar")
+
+st.divider()
+st.subheader("CO₂-Intensität pro Geschoss")
+st.caption("Wärmekarte: Welches Material verursacht auf welchem Geschoss die meisten CO₂-Emissionen?")
+fig_heatmap = create_storey_material_heatmap(element_df)
+st.plotly_chart(fig_heatmap, use_container_width=True, key="p4_heatmap")
 
 # -- Quantity Takeoff Table ----------------------------------------------------
 st.divider()

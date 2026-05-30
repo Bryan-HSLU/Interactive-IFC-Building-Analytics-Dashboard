@@ -8,6 +8,8 @@ from src.state_manager import (
 from src.filters import render_sidebar
 from src.chart_factory import create_room_treemap
 from src.constants import COLORS
+from src.ui_helpers import hero_kpi_card
+from src.state_manager import get_quality_data
 
 init_session_state()
 
@@ -31,7 +33,18 @@ space_df = get_space_df(filtered=True)
 has_spaces = space_df is not None and not space_df.empty
 
 st.title("Gebäude-Übersicht")
-st.caption("Schneller Überblick und räumliche NFA-Verteilung des Gebäudes.")
+
+if has_spaces and "area_m2" in space_df.columns and space_df["area_m2"].sum() > 0:
+    total_a = space_df["area_m2"].sum()
+    agg = space_df.groupby("usage")["area_m2"].sum()
+    if not agg.empty:
+        dominant_usage = agg.idxmax()
+        pct = (agg.max() / total_a) * 100
+        st.caption(f"{len(space_df)} Räume auf {total_a:,.0f} m² — **{dominant_usage}** belegt {pct:.0f} % der NFA")
+    else:
+        st.caption("Schneller Überblick und räumliche NFA-Verteilung des Gebäudes.")
+else:
+    st.caption("Schneller Überblick und räumliche NFA-Verteilung des Gebäudes.")
 
 # ── 1️⃣ KPI Cards: "Wie gross ist das Gebäude insgesamt – und was enthält es?" ──
 
@@ -53,30 +66,27 @@ total_co2 = (
     else 0.0
 )
 
+_, quality_summary = get_quality_data()
+quality_score = quality_summary.get("score", 0) if quality_summary else 0.0
+total_cost = (
+    pd.to_numeric(element_df["cost_chf"], errors="coerce").sum()
+    if element_df is not None and "cost_chf" in element_df.columns
+    else 0.0
+)
+co2_per_m2 = (total_co2 / total_area) if total_area > 0 else 0.0
 
-def render_kpi(label: str, value: str):
-    st.markdown(
-        f'<div style="background:#FFFFFF; border-top: 4px solid #2E86AB; border-radius: 6px; '
-        f'padding: 12px 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 12px; text-align: center;">'
-        f'<div style="font-size: 0.8rem; color: #8B8B8B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{label}</div>'
-        f'<div style="font-size: 1.65rem; font-weight: 700; color: #2D2D2D; margin-top: 4px; white-space: nowrap;">{value}</div>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-
-# Custom column weights to give wider cards (like Gesamtfläche and Total CO2) more horizontal room
-kcols = st.columns([1.3, 1.2, 0.8, 0.8, 1.1])
+kcols = st.columns(4)
 with kcols[0]:
-    render_kpi("Gesamtfläche", f"{total_area:,.1f} m²" if total_area > 0 else "–")
+    hero_kpi_card("CO₂ TOTAL", f"{total_co2:,.0f}".replace(",", "'"), "kg")
 with kcols[1]:
-    render_kpi("Anzahl Räume", f"{room_count:,}" if room_count > 0 else "–")
+    if total_area > 0:
+        hero_kpi_card("CO₂ / NGF", f"{co2_per_m2:,.1f}".replace(",", "'"), "kg/m²")
+    else:
+        hero_kpi_card("CO₂ / NGF", "–", "kg/m²")
 with kcols[2]:
-    render_kpi("Fenster", f"{window_count:,}" if window_count > 0 else "–")
+    hero_kpi_card("KOSTEN", f"{total_cost:,.0f}".replace(",", "'"), "CHF")
 with kcols[3]:
-    render_kpi("Türen", f"{door_count:,}" if door_count > 0 else "–")
-with kcols[4]:
-    render_kpi("Total CO₂", f"{total_co2:,.0f} kg" if total_co2 > 0 else "–")
+    hero_kpi_card("QUALITÄT", f"{quality_score:.0f}", "%")
 
 st.divider()
 

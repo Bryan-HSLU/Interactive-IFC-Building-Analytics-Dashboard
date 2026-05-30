@@ -10,6 +10,7 @@ from src.state_manager import (
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import create_pset_lollipop_chart
 from src.quality_checker import build_pset_matrix
+from src.constants import COLORS, STATUS_SHAPES
 
 init_session_state()
 
@@ -41,7 +42,19 @@ if not quality_summary:
     st.stop()
 
 st.title("Qualitätsprüfung")
-st.caption("Analysiert wie vollständig und konsistent die IFC-Modelldaten sind.")
+if total_errors > 0:
+    worst_error_key = max(error_counts, key=error_counts.get)
+    worst_error_count = error_counts[worst_error_key]
+    msg_map = {
+        "missing_storey": "Elemente ohne Geschosszuweisung",
+        "missing_material": "Elemente ohne Material",
+        "missing_quantity": "Elemente ohne Mengenangaben",
+        "missing_usage": "Räume ohne Nutzung",
+        "missing_status": "Elemente ohne Status"
+    }
+    st.caption(f"{worst_error_count} {msg_map.get(worst_error_key, 'Fehler')} — Mengen unsicher")
+else:
+    st.caption("Modell ist fehlerfrei und konsistent.")
 
 CF_KEYS = ["cf_page6_error_cat"]
 render_cross_filter_reset("page6", CF_KEYS)
@@ -70,8 +83,8 @@ INDICATOR_CONFIG = [
 if mode == "umbau":
     INDICATOR_CONFIG.append(("missing_status", "Ohne Status", "warning"))
 
-SEVERITY_COLORS = {"critical": "#E07B39", "warning": "#D4A017", "ok": "#A8D5B5"}
-SEVERITY_LABELS = {"critical": "Critical", "warning": "Warning", "ok": "OK"}
+SEVERITY_COLORS = {"critical": COLORS["error_critical"], "warning": COLORS["error_warning"], "ok": COLORS["error_ok"]}
+SEVERITY_LABELS = {"critical": f"{STATUS_SHAPES['critical']} Critical", "warning": f"{STATUS_SHAPES['warning']} Warning", "ok": f"{STATUS_SHAPES['ok']} OK"}
 
 # Baue ein Lookup: Label → (key, value, severity, color)
 indicator_lookup = {}

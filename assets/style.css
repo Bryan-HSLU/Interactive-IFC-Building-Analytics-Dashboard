@@ -1,6 +1,7 @@
 /* IFC Building Analytics Dashboard — Custom CSS */
 
 /* Main font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 html, body, [class*="css"] {
     font-family: 'Inter', 'Segoe UI', sans-serif;
 }
@@ -8,9 +9,9 @@ html, body, [class*="css"] {
 /* Hide Streamlit default footer */
 footer { visibility: hidden; }
 
-/* Sidebar background — brownish-grey */
+/* Sidebar background */
 [data-testid="stSidebar"] {
-    background-color: #6B5B4E !important;
+    background-color: #1B3A5B !important;
 }
 [data-testid="stSidebar"] * {
     color: #F5F0ED !important;
@@ -56,9 +57,9 @@ footer { visibility: hidden; }
 }
 
 /* Quality badge colors */
-.badge-ok { color: #2980B9; font-weight: 600; }
-.badge-warning { color: #E67E22; font-weight: 600; }
-.badge-critical { color: #E67E22; font-weight: 700; }
+.badge-ok { color: #3A86A8; font-weight: 600; }
+.badge-warning { color: #F4A259; font-weight: 600; }
+.badge-critical { color: #C44536; font-weight: 700; }
 
 /* Sidebar quality indicator */
 .sidebar-badge {
@@ -68,9 +69,9 @@ footer { visibility: hidden; }
     font-size: 0.8em;
     font-weight: 600;
 }
-.sidebar-badge.ok { background: #D6EAF8; color: #2980B9; }
-.sidebar-badge.warning { background: #FCF3CF; color: #E67E22; }
-.sidebar-badge.critical { background: #FDEBD0; color: #E67E22; font-weight: 700; }
+.sidebar-badge.ok { background: #D6EAF8; color: #3A86A8; }
+.sidebar-badge.warning { background: #FCF3CF; color: #F4A259; }
+.sidebar-badge.critical { background: #FADBD8; color: #C44536; font-weight: 700; }
 
 /* Dataframe styling */
 [data-testid="stDataFrame"] {

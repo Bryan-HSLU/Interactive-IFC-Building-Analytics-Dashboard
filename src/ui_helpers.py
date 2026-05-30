@@ -25,6 +25,37 @@ def kpi_card(
         unsafe_allow_html=True,
     )
 
+def fmt_co2(val: float) -> str:
+    return f"{val:,.0f}".replace(",", "'") + " kg CO₂e"
+
+def fmt_chf(val: float) -> str:
+    return "CHF " + f"{val:,.0f}".replace(",", "'")
+
+def fmt_area(val: float) -> str:
+    return f"{val:,.1f}".replace(",", "'") + " m²"
+
+def hero_kpi_card(label: str, value: str, unit: str = "", delta: str = "") -> None:
+    unit_html = f'<span style="font-size:0.9rem;font-weight:400;color:{COLORS["text_light"]};margin-left:4px;">{unit}</span>' if unit else ""
+    delta_html = f'<div style="font-size:0.85rem;color:{COLORS["error_ok"]};margin-top:4px;">{delta}</div>' if delta else ""
+    st.markdown(
+        f'<div style="background:#FFFFFF;border-top:4px solid {COLORS["primary"]};border-radius:6px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin-bottom:12px;">'
+        f'<div style="font-size:0.85rem;color:{COLORS["text_light"]};text-transform:uppercase;letter-spacing:0.5px;">{label}</div>'
+        f'<div style="font-size:2rem;font-weight:700;color:{COLORS["text"]};margin-top:4px;line-height:1.1;">{value}{unit_html}</div>'
+        f"{delta_html}</div>",
+        unsafe_allow_html=True,
+    )
+
+def scenario_card(title: str, value: float, fmt_func) -> None:
+    val_str = fmt_func(value)
+    st.markdown(
+        f'<div style="background:#F7F9FB;border-radius:6px;padding:12px;border:1px solid {COLORS["grid"]};">'
+        f'<div style="font-size:0.85rem;color:{COLORS["text_light"]};">{title}</div>'
+        f'<div style="font-size:1.4rem;font-weight:600;color:{COLORS["text"]};">{val_str}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
 
 # ── Unit conversion factors ───────────────────────────────────────────────────
 _AREA_FACTORS = {"m\u00b2": 1.0, "cm\u00b2": 10_000.0}

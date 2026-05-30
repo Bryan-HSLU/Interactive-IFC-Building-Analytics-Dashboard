@@ -1,35 +1,42 @@
 # Unified Color Palette and Constants according to Course Guidelines
 
 COLORS = {
-    "neubau": "#2E86AB",  # Stahlblau (Akzentfarbe)
-    "abbruch": "#D94F3D",  # Rot — Abbruch / hohe Belastung
-    "bestand": "#8B8B8B",  # Mittelgrau — neutral, Bestand
-    "temporaer": "#5C6E7E",  # Blaugrau
-    "primary": "#2E86AB",  # Stahlblau — Akzentfarbe
-    "neutral": "#CCCCCC",  # Hellgrau — Nicht-selektiert
-    "unknown": "#CCCCCC",
-    "error_ok": "#A8D5B5",  # Grün — kein Fehler
-    "error_warning": "#F5E642",  # Gelb — Warnung
-    "error_critical": "#D94F3D",  # Rot — kritischer Fehler
+    "neubau": "#2E86AB",  # Stahlblau
+    "abbruch": "#C44536",  # Dunkelrot
+    "bestand": "#9CA3AF",  # Grau
+    "temporaer": "#6B8F9C",  # Blaugrau
+    "primary": "#2E86AB",  # Stahlblau
+    "neutral": "#B8BFC7",  # Neutralgrau
+    "unknown": "#C9CDD3",
+    "error_ok": "#3A86A8",  # Blau (CB-safe)
+    "error_warning": "#F4A259",  # Orange
+    "error_critical": "#C44536",  # Dunkelrot
     "text": "#2D2D2D",  # Dunkelgrau
-    "text_light": "#8B8B8B",  # Mittelgrau
-    "grid": "#EAEAEA",  # Sehr helles Grau für Gitternetzlinien
+    "text_light": "#6B7280",  # Mittelgrau
+    "grid": "#E8EBEF",  # Gitter
 }
+
 
 STATUS_COLORS = {
     "Neubau": "#2E86AB",
-    "Abbruch": "#D94F3D",
-    "Bestand": "#8B8B8B",
-    "Temporär": "#5C6E7E",
-    "Nicht gefunden": "#CCCCCC",
+    "Abbruch": "#C44536",
+    "Bestand": "#9CA3AF",
+    "Temporär": "#6B8F9C",
+    "Nicht gefunden": "#C9CDD3",
 }
 
-# Sequential scale for CO2: Low (Green) -> Mid (Yellow) -> High (Red)
+# Sequential scale for CO2: Low -> Mid -> High (CB-safe)
 CO2_SCALE = [
-    "#A8D5B5",  # Niedrig
-    "#F5E642",  # Mittel
-    "#D94F3D",  # Hoch
+    "#FFF3B0",  # Niedrig
+    "#FCA311",  # Mittel
+    "#D62828",  # Hoch
 ]
+
+STATUS_SHAPES = {
+    "ok": "●",
+    "warning": "▲",
+    "critical": "■"
+}
 
 # Consistent Room Type Palette
 ROOM_COLORS = {
@@ -55,19 +62,19 @@ ROOM_COLORS = {
 
 # Consistent Material Palette
 MATERIAL_COLORS = {
-    "Stahlbeton": "#2E86AB",  # Stahlblau
+    "Stahlbeton": "#2E86AB",
     "Beton": "#2E86AB",
-    "Stahl": "#5C6E7E",  # Blaugrau
-    "Metall": "#5C6E7E",
-    "Holz": "#C8A96E",  # Holz/Gold
-    "Backstein": "#D94F3D",  # Ziegelrot
-    "Ziegel": "#D94F3D",
-    "Dämmung": "#A8D4E6",  # Hellblau
-    "Glas": "#8B8B8B",  # Neutralgrau
-    "Gips": "#CCCCCC",  # Hellgrau
-    "Andere": "#CCCCCC",
-    "Sonstige": "#CCCCCC",
-    "Unbekannt": "#CCCCCC",
+    "Stahl": "#7B5EA7",
+    "Metall": "#7B5EA7",
+    "Holz": "#E07B39",
+    "Backstein": "#C44536",
+    "Ziegel": "#C44536",
+    "Dämmung": "#6BAF92",
+    "Glas": "#9CA3AF",
+    "Gips": "#C9CDD3",
+    "Andere": "#C9CDD3",
+    "Sonstige": "#C9CDD3",
+    "Unbekannt": "#C9CDD3",
 }
 
 CATEGORICAL_COLORS = [
@@ -225,12 +232,12 @@ MATERIAL_GROUP_RULES = [
 ]
 
 MATERIAL_GROUP_COLORS = {
-    "Holz": "#D35400",  # Warmes Rost-Orange (Dunkel)
-    "Beton": "#E67E22",  # Leuchtendes Orange
-    "Metall": "#F39C12",  # Edles Amber-Orange
-    "Dämmung": "#F5B041",  # Weiches Sonnen-Orange
-    "Glas": "#F8C471",  # Helles Pfirsich-Orange
-    "Andere": "#BDC3C7",  # Neutrales Hellgrau
+    "Beton": "#2E86AB",    # Stahlblau
+    "Holz": "#E07B39",     # Warmes Orange
+    "Metall": "#7B5EA7",   # Lila
+    "Dämmung": "#6BAF92",  # Salbeigrün
+    "Glas": "#9CA3AF",     # Kühles Grau
+    "Andere": "#C9CDD3",   # Hellgrau
 }
 
 HOLZ_TRIGGERS = [

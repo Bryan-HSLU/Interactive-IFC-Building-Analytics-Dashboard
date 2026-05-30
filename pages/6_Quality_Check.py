@@ -41,28 +41,32 @@ if not quality_summary:
     st.warning("Keine Qualitätsdaten verfügbar.")
     st.stop()
 
+# ── Resolve metrics BEFORE using them in captions ────────────────────────────
+score = quality_summary.get("score", 0)
+error_counts = quality_summary.get("error_counts", {})
+total_elements = quality_summary.get("total_elements", 0)
+total_errors = sum(error_counts.values())
+
 st.title("Qualitätsprüfung")
-if total_errors > 0:
+
+# Dynamic caption — maps error key → human-readable description
+_MSG_MAP = {
+    "missing_storey": "Elemente ohne Geschosszuweisung",
+    "missing_material": "Elemente ohne Material",
+    "missing_quantity": "Elemente ohne Mengenangaben",
+    "missing_usage": "Räume ohne Nutzung",
+    "missing_status": "Elemente ohne Status",
+}
+if total_errors > 0 and error_counts:
     worst_error_key = max(error_counts, key=error_counts.get)
     worst_error_count = error_counts[worst_error_key]
-    msg_map = {
-        "missing_storey": "Elemente ohne Geschosszuweisung",
-        "missing_material": "Elemente ohne Material",
-        "missing_quantity": "Elemente ohne Mengenangaben",
-        "missing_usage": "Räume ohne Nutzung",
-        "missing_status": "Elemente ohne Status"
-    }
-    st.caption(f"{worst_error_count} {msg_map.get(worst_error_key, 'Fehler')} — Mengen unsicher")
+    worst_error_label = _MSG_MAP.get(worst_error_key, "Fehler")
+    st.caption(f"{worst_error_count:,} {worst_error_label} — Mengen unsicher")
 else:
     st.caption("Modell ist fehlerfrei und konsistent.")
 
 CF_KEYS = ["cf_page6_error_cat"]
 render_cross_filter_reset("page6", CF_KEYS)
-
-score = quality_summary.get("score", 0)
-error_counts = quality_summary.get("error_counts", {})
-total_elements = quality_summary.get("total_elements", 0)
-total_errors = sum(error_counts.values())
 
 
 def _fmt(n: int) -> str:
@@ -111,13 +115,10 @@ bar_colors = []
 for lbl in labels:
     info = indicator_lookup[lbl]
     if selected_fehler is None:
-        # Kein Filter aktiv → Originalfarben
         bar_colors.append(info["color"])
     elif lbl == selected_fehler:
-        # Dieser Balken ist selektiert → Originalfarbe
         bar_colors.append(info["color"])
     else:
-        # Alle anderen → Grau
         bar_colors.append("#CCCCCC")
 
 # ── Layout: KPI links, Balkendiagramm rechts ──────────────────────────────────
@@ -248,7 +249,6 @@ with col_bar:
             clicked_label = points[0].get("y")
             if clicked_label and clicked_label in indicator_lookup:
                 if selected_fehler == clicked_label:
-                    # Gleicher Balken erneut geklickt → Selektion aufheben
                     st.session_state["selected_fehler"] = None
                     st.rerun()
                 else:
@@ -311,7 +311,6 @@ if element_df is not None and not element_df.empty:
     if pset_matrix is not None and not pset_matrix.empty:
         total_psets = len(pset_matrix.columns)
 
-        # Berechne Vollständigkeit pro Klasse für die KPI-Verknüpfung
         class_completeness = {}
         class_missing = {}
         for cls in pset_matrix.index:
@@ -320,13 +319,11 @@ if element_df is not None and not element_df.empty:
             class_completeness[cls] = round(pct, 1)
             class_missing[cls] = total_psets - present
 
-        # Session State initialisieren
         if "selected_klasse" not in st.session_state:
             st.session_state["selected_klasse"] = None
 
         col_lollipop_kpi, col_lollipop_chart = st.columns([1, 2])
 
-        # ── Interaktive KPI-Card (links) ──
         with col_lollipop_kpi:
             selected = st.session_state.get("selected_klasse")
 
@@ -398,7 +395,6 @@ if element_df is not None and not element_df.empty:
                     st.session_state["selected_klasse"] = None
                     st.rerun()
 
-        # ── Lollipop Chart (rechts) ──
         with col_lollipop_chart:
             fig_lollipop = create_pset_lollipop_chart(pset_matrix)
             event_lollipop = st.plotly_chart(
@@ -408,7 +404,6 @@ if element_df is not None and not element_df.empty:
                 key="lollipop_chart",
             )
 
-            # Klick-Interaktion auswerten
             if event_lollipop and hasattr(event_lollipop, "selection") and event_lollipop.selection:
                 points = event_lollipop.selection.get("points", [])
                 if points:

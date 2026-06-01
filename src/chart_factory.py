@@ -926,11 +926,7 @@ def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = Non
     if df.empty:
         return _empty_fig("Keine quantitativen Werte für CO₂-Dichte-Chart")
 
-    # Berechne CO2-Dichte
     df["co2_dichte"] = df["co2_load"] / df["area_m2"]
-    
-    # Sortieren nach Dichte aufsteigend, da Plotly horizontal bar chart von unten nach oben rendert.
-    # So steht der höchste Dichtewert ganz oben!
     df = df.sort_values("co2_dichte", ascending=True)
 
     def _group_room_usage(usage: str) -> tuple[str, str]:
@@ -943,7 +939,6 @@ def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = Non
     df["grouped_usage"] = df["usage"].apply(lambda u: _group_room_usage(u)[0])
     df["group_color"] = df["usage"].apply(lambda u: _group_room_usage(u)[1])
 
-    # Styling auf Basis von selected_raum
     bar_colors = []
     line_colors = []
     line_widths = []
@@ -960,22 +955,18 @@ def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = Non
         base_color = row.get("group_color", "#CCCCCC")
         if selected_raum:
             if rlabel == selected_raum:
-                # Hervorgehoben: Volle Opazität + dicke schwarze Kontur
                 bar_colors.append(hex_to_rgba(base_color, 1.0))
                 line_colors.append("rgba(0,0,0,1.0)")
                 line_widths.append(3.0)
             else:
-                # Verblasst: Niedrige Opazität
                 bar_colors.append(hex_to_rgba(base_color, 0.3))
                 line_colors.append("rgba(45,45,45,0.3)")
                 line_widths.append(0.0)
         else:
-            # Standard: Volle Opazität
             bar_colors.append(hex_to_rgba(base_color, 0.95))
             line_colors.append("rgba(0,0,0,0)")
             line_widths.append(0.0)
 
-    # Plotly bar chart
     fig = go.Figure(
         go.Bar(
             x=df["co2_dichte"],
@@ -1043,7 +1034,6 @@ def create_co2_pareto(element_df: pd.DataFrame) -> go.Figure:
     
     colors = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in agg["material"]]
     
-    # Bar for absolute CO2
     fig.add_trace(
         go.Bar(
             x=agg["material"],
@@ -1054,7 +1044,6 @@ def create_co2_pareto(element_df: pd.DataFrame) -> go.Figure:
         )
     )
     
-    # Line for cumulative %
     fig.add_trace(
         go.Scatter(
             x=agg["material"],
@@ -1070,7 +1059,6 @@ def create_co2_pareto(element_df: pd.DataFrame) -> go.Figure:
     
     fig = apply_default_layout(fig, "")
     
-    # Add 80% line
     fig.add_shape(
         type="line",
         x0=0, x1=1, xref="paper",
@@ -1088,7 +1076,7 @@ def create_co2_pareto(element_df: pd.DataFrame) -> go.Figure:
             tickfont=dict(size=11, color=COLORS["text_light"])
         ),
         showlegend=False,
-        margin=dict(r=50) # make room for right yaxis
+        margin=dict(r=50)
     )
     
     return fig
@@ -1132,7 +1120,6 @@ def create_storey_material_heatmap(element_df: pd.DataFrame) -> go.Figure:
     if pivot.empty:
         return _empty_fig("Keine Daten nach Filterung")
         
-    # Sort storeys nicely if they have numbers
     storeys_sorted = sorted(pivot.index.tolist())
     pivot = pivot.reindex(storeys_sorted)
     
@@ -1190,7 +1177,6 @@ def create_cost_co2_scatter(element_df: pd.DataFrame) -> go.Figure:
     df_m["co2_num"] = pd.to_numeric(df_m["co2e_total"], errors="coerce").fillna(0)
     df_m["vol_num"] = pd.to_numeric(df_m["volume_m3"], errors="coerce").fillna(0)
     
-    # Aggregate by material group
     agg = df_m.groupby("grouped_material").agg({"cost_num": "sum", "co2_num": "sum", "vol_num": "sum"}).reset_index()
     agg = agg[(agg["cost_num"]>0) | (agg["co2_num"]>0)]
     
@@ -1274,4 +1260,123 @@ def create_circularity_donut(element_df: pd.DataFrame) -> go.Figure:
     )
     
     fig.update_layout(margin=dict(t=20, b=20, l=20, r=20), showlegend=False)
+    return fig
+
+
+# ── IFC-Klassen-Verteilung (Cockpit Overview) ─────────────────────────────────
+
+
+def create_ifc_class_bar(element_df: pd.DataFrame) -> go.Figure:
+    """Horizontaler Balken: Anzahl Elemente je ifc_class, absteigend sortiert."""
+    if element_df is None or element_df.empty or "ifc_class" not in element_df.columns:
+        return _empty_fig("Keine IFC-Klassendaten verfügbar")
+
+    df = element_df.copy()
+    df["ifc_class"] = df["ifc_class"].fillna("Unbekannt").astype(str)
+    agg = (
+        df.groupby("ifc_class")
+        .size()
+        .reset_index(name="Anzahl")
+        .sort_values("Anzahl", ascending=True)
+    )
+
+    if agg.empty:
+        return _empty_fig("Keine IFC-Klassen gefunden")
+
+    max_val = agg["Anzahl"].max()
+
+    fig = go.Figure(
+        go.Bar(
+            x=agg["Anzahl"],
+            y=agg["ifc_class"],
+            orientation="h",
+            marker_color=COLORS.get("accent", "#2E86AB"),
+            text=agg["Anzahl"],
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate="<b>%{y}</b><br>Anzahl Elemente: %{x}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        template="plotly_white",
+        font=dict(family="Inter, sans-serif", size=12, color=COLORS["text"]),
+        xaxis=dict(
+            title="Anzahl Elemente",
+            range=[0, max_val * 1.25],
+            gridcolor=COLORS["grid"],
+            showgrid=True,
+            zeroline=False,
+            tickfont=dict(size=11, color=COLORS["text_light"]),
+        ),
+        yaxis=dict(title="", tickfont=dict(size=12, color=COLORS["text"])),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        margin=dict(l=10, r=40, t=20, b=30),
+        height=max(260, len(agg) * 32),
+        hoverlabel=dict(bgcolor="white", font_size=12, font_family="Inter, sans-serif"),
+    )
+    return fig
+
+
+# ── Status-/Phasenverteilung (Cockpit Overview) ───────────────────────────────
+
+
+def create_status_donut(element_df: pd.DataFrame) -> go.Figure:
+    """Donut-Chart: Elementanzahl nach Status (Bestand / Neubau / Abbruch / Temporär)."""
+    if element_df is None or element_df.empty or "status" not in element_df.columns:
+        return _empty_fig("Keine Statusdaten verfügbar")
+
+    df = element_df.copy()
+    df["status"] = df["status"].fillna("Unbekannt").astype(str)
+    agg = (
+        df.groupby("status")
+        .size()
+        .reset_index(name="Anzahl")
+        .sort_values("Anzahl", ascending=False)
+    )
+
+    if agg.empty or agg["Anzahl"].sum() == 0:
+        return _empty_fig("Keine Statusdaten vorhanden")
+
+    colors = [STATUS_COLORS.get(s, "#C9CDD3") for s in agg["status"]]
+    total = agg["Anzahl"].sum()
+
+    fig = go.Figure(
+        go.Pie(
+            labels=agg["status"],
+            values=agg["Anzahl"],
+            hole=0.58,
+            marker=dict(colors=colors),
+            textinfo="label+percent",
+            sort=False,
+            hovertemplate="<b>%{label}</b><br>Anzahl: %{value:,}<br>Anteil: %{percent}<extra></extra>",
+        )
+    )
+
+    fig.add_annotation(
+        text=f"<b>{total:,}</b><br><span style='font-size:12px;'>Elemente</span>".replace(",", "'"),
+        x=0.5, y=0.5,
+        font=dict(size=22, family="Inter, sans-serif", color=COLORS["text"]),
+        showarrow=False,
+    )
+
+    fig.update_layout(
+        template="plotly_white",
+        font=dict(family="Inter, sans-serif", size=13, color=COLORS["text"]),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            y=-0.08,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=12),
+        ),
+        margin=dict(l=20, r=20, t=20, b=40),
+        height=340,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        hoverlabel=dict(bgcolor="white", font_size=12, font_family="Inter, sans-serif"),
+    )
     return fig

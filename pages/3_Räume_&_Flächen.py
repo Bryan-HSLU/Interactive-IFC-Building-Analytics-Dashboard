@@ -25,12 +25,12 @@ if not st.session_state.get("ifc_parsed"):
 space_df = get_space_df(filtered=True)
 
 if space_df is None or space_df.empty:
-    st.title("Räume & Flächen")
+    st.title("🏠 Räume & Flächen")
     st.info("Dieses Modell enthält keine Räume (IfcSpace) für eine Detailauswertung.")
     st.stop()
 
-st.title("Räume & Flächen")
-st.caption("Ausreisser-Erkennung und quantitative Detailanalyse der Räume.")
+st.title("🏠 Räume & Flächen")
+st.caption("📐 Ausreisser-Erkennung und quantitative Detailanalyse der Räume.")
 
 # Apply master filter from Overview Treemap
 CF_KEYS = ["cf_page3_usage"]
@@ -55,16 +55,16 @@ if space_df.empty:
 if "selected_raum" not in st.session_state:
     st.session_state["selected_raum"] = None
 
-# ── 5️⃣ Scatter Plot & CO₂-Dichte Chart ──────────────────────────────────────────
+# ── Scatter Plot & CO₂-Dichte Chart ──────────────────────────────────────────
 
-st.subheader("Ausreisser-Erkennung (Fläche vs. CO₂-Last)")
+st.subheader("🔍 Ausreisser-Erkennung (Fläche vs. CO₂-Last)")
 st.caption(
-    "Punkte weit über der Trendlinie zeigen Räume mit überdurchschnittlich hoher CO₂-Intensität."
+    "📈 Punkte weit über der Trendlinie zeigen Räume mit überdurchschnittlich hoher CO₂-Intensität."
 )
 
 selected_raum = st.session_state.get("selected_raum")
 if selected_raum:
-    st.info(f"Ausgewählter Raum: **{selected_raum}** (im Scatter Plot hervorgehoben, andere halbtransparent)")
+    st.info(f"📌 Ausgewählter Raum: **{selected_raum}** (im Scatter Plot hervorgehoben, andere halbtransparent)")
     if st.button("✕ Raumauswahl aufheben", key="reset_selected_raum_btn", use_container_width=True):
         st.session_state["selected_raum"] = None
         st.rerun()
@@ -73,6 +73,9 @@ fig_scatter = create_room_co2_scatter(space_df, selected_raum)
 st.plotly_chart(fig_scatter, use_container_width=True, key="p3_scatter")
 
 st.divider()
+
+st.subheader("🌡️ CO₂-Intensität pro Raum (kg CO₂eq / m²)")
+st.caption("🖱️ Klicken Sie auf einen Balken, um diesen Raum im Scatter Plot hervorzuheben.")
 
 fig_density = create_room_co2_density_bar(space_df, selected_raum)
 event_density = st.plotly_chart(
@@ -95,11 +98,11 @@ if event_density and hasattr(event_density, "selection") and event_density.selec
                 st.session_state["selected_raum"] = clicked_room
                 st.rerun()
 
-# ── 7️⃣ Details Table with Heatmapped CO2 Column ──────────────────────────────────
+# ── Details Table with Heatmapped CO2 Column ──────────────────────────────────
 
 st.divider()
-st.subheader("Raum-Details & Kennzahlen")
-st.caption("Details on demand: Suchbare Tabelle mit farbcodierter CO₂-Dichte.")
+st.subheader("📋 Raum-Details & Kennzahlen")
+st.caption("🔎 Details on demand: Suchbare Tabelle mit farbcodierter CO₂-Dichte.")
 
 
 # Generate Plausible Main Material based on Room Usage
@@ -130,7 +133,7 @@ table_df["main_material"] = table_df.apply(_estimate_main_material, axis=1)
 
 # Search Bar
 search = st.text_input(
-    "Suche (Raumname)", key="search_rooms", placeholder="z.B. Büro, Flur..."
+    "🔎 Suche (Raumname)", key="search_rooms", placeholder="z.B. Büro, Flur..."
 )
 if search:
     mask = pd.Series([False] * len(table_df))
@@ -173,7 +176,6 @@ if not table_df.empty:
             x = float(val)
             max_val = display_df["CO₂-Last (kg)"].max() or 1.0
             pct = min(1.0, max(0.0, x / max_val))
-            # Interpolation between #FFF3B0 (0%) -> #FCA311 (50%) -> #D62828 (100%)
             if pct < 0.5:
                 t = pct / 0.5
                 r = int(255 + t * (252 - 255))
@@ -188,7 +190,7 @@ if not table_df.empty:
         except Exception:
             return ""
 
-    st.caption(f"{len(display_df):,} Räume angezeigt")
+    st.caption(f"🏠 {len(display_df):,} Räume angezeigt")
     st.dataframe(
         display_df.style.map(_style_co2, subset=["CO₂-Last (kg)"]),
         use_container_width=True,

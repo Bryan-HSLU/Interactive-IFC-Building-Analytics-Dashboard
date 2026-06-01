@@ -30,11 +30,11 @@ if not st.session_state.get("ifc_parsed"):
 element_df = get_element_df(filtered=True)
 
 if element_df is None or element_df.empty:
-    st.title("Bauteile & Mengen")
+    st.title("🧱 Bauteile & Mengen")
     st.warning("Keine Bauteildaten verfügbar.")
     st.stop()
 
-st.title("Bauteile & Mengen")
+st.title("🧱 Bauteile & Mengen")
 
 _u_area = st.session_state.get("unit_area", "m\u00b2")
 _u_volume = st.session_state.get("unit_volume", "m\u00b3")
@@ -78,7 +78,6 @@ if cf_usage:
             element_df = pd.DataFrame()
 
 # Keep an unfiltered-by-material copy for the volume bar chart
-# (so user can always see & click ALL materials to toggle)
 element_df_all = element_df.copy()
 
 # Compute the top 5 grouped materials dynamically
@@ -93,20 +92,20 @@ if not element_df_all.empty and "grouped_material" in element_df_all.columns:
             .nlargest(5)
             .index.tolist()
         )
-        
+
         # Dynamic caption
         agg_vol = df_valid.groupby("grouped_material")[vol_col].sum()
         tot_vol = agg_vol.sum()
         if tot_vol > 0:
             top_4 = agg_vol.nlargest(4)
             pct_top = (top_4.sum() / tot_vol) * 100
-            st.caption(f"{len(top_4)} Materialien = {pct_top:.0f} % des Volumens")
+            st.caption(f"📦 {len(top_4)} Materialien = {pct_top:.0f} % des Volumens")
         else:
-            st.caption("Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
+            st.caption("📦 Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
     else:
-        st.caption("Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
+        st.caption("📦 Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
 else:
-    st.caption("Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
+    st.caption("📦 Umfassende Materialzusammensetzung und Analyse der Mengenverteilung.")
 
 # Now apply material & class filter for KPIs, stacked bar, and table
 if cf_class and "ifc_class" in element_df.columns:
@@ -131,12 +130,12 @@ if cf_mat:
     active_parts.append(f"Material: **{cf_mat}**")
 if active_parts:
     st.info(
-        "Aktiver Filter — "
+        "🔽 Aktiver Filter — "
         + " | ".join(active_parts)
         + "  (Button oben zum Zurücksetzen)"
     )
 
-# -- KPI Cards (reflect the active material filter!) --------------------------
+# -- KPI Cards -----------------------------------------------------------------
 vol_sum = pd.to_numeric(
     element_df.get("volume_m3", pd.Series(dtype=float)), errors="coerce"
 ).sum(skipna=True)
@@ -144,22 +143,20 @@ area_sum = pd.to_numeric(
     element_df.get("area_m2", pd.Series(dtype=float)), errors="coerce"
 ).sum(skipna=True)
 kpi = st.columns(4)
-kpi[0].metric("IFC-Klassen", f"{element_df['ifc_class'].nunique()}")
-kpi[1].metric("Bauelemente", f"{len(element_df):,}")
-kpi[2].metric("Volumen total", f"{vol_sum:,.1f} m³")
+kpi[0].metric("🗂️ IFC-Klassen", f"{element_df['ifc_class'].nunique()}")
+kpi[1].metric("🧱 Bauelemente", f"{len(element_df):,}")
+kpi[2].metric("📦 Volumen total", f"{vol_sum:,.1f} m³")
 kpi[3].metric(
-    "Materialien",
+    "🎨 Materialien",
     f"{element_df['material'].nunique()}" if "material" in element_df.columns else "–",
 )
 
 st.divider()
 
-# -- Chart A (Insight 3): "Welche Materialien sind verbaut – und wie viel?" ----
-# Always show ALL materials so the user can click to select/deselect
-
-st.subheader("Mengen nach Materialgruppe")
+# -- Chart A: Mengen nach Materialgruppe ---------------------------------------
+st.subheader("📦 Mengen nach Materialgruppe")
 st.caption(
-    "Klicken Sie auf einen Balken, um nach diesem Material zu filtern. Zum Aufheben nutzen Sie den Button oben."
+    "🖱️ Klicken Sie auf einen Balken, um nach diesem Material zu filtern. Zum Aufheben nutzen Sie den Button oben."
 )
 unit = st.session_state.get("unit_volume", "m³")
 fig_mat = create_material_volume_bar(element_df_all, unit)
@@ -169,9 +166,7 @@ ev_mat = st.plotly_chart(
     fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True
 )
 
-# Stable click handling: only act when the clicked material DIFFERS from
-# the current filter. This prevents the infinite rerun loop caused by
-# Plotly's persistent widget selection state.
+# Stable click handling
 if ev_mat and ev_mat.selection and ev_mat.selection.points:
     pt = ev_mat.selection.points[0]
     clicked = pt.get("y") or pt.get("label") or None
@@ -181,11 +176,10 @@ if ev_mat and ev_mat.selection and ev_mat.selection.points:
 
 st.divider()
 
-# -- Chart B (Insight 6): "Wie verteilen sich Materialien auf Wand, Boden, Decke?"
-
-st.subheader("Materialanteil pro Bauteilgruppe")
+# -- Chart B: Materialanteil pro Bauteilgruppe ---------------------------------
+st.subheader("🏗️ Materialanteil pro Bauteilgruppe")
 st.caption(
-    "100% Stacked Bar Chart zur vergleichenden Zusammensetzung (Decke, Boden, Wand, Fenster, Tür)."
+    "📊 100% Stacked Bar Chart zur vergleichenden Zusammensetzung (Decke, Boden, Wand)."
 )
 fig_stacked = create_element_material_stacked_bar(element_df)
 fig_stacked.update_layout(
@@ -203,19 +197,19 @@ fig_stacked.update_layout(
 st.plotly_chart(fig_stacked, use_container_width=True, key="p4_stacked_bar")
 
 st.divider()
-st.subheader("CO₂-Intensität pro Geschoss")
-st.caption("Wärmekarte: Welches Material verursacht auf welchem Geschoss die meisten CO₂-Emissionen?")
+st.subheader("🌡️ CO₂-Intensität pro Geschoss")
+st.caption("🗺️ Wärmekarte: Welches Material verursacht auf welchem Geschoss die meisten CO₂-Emissionen?")
 fig_heatmap = create_storey_material_heatmap(element_df)
 st.plotly_chart(fig_heatmap, use_container_width=True, key="p4_heatmap")
 
 # -- Quantity Takeoff Table ----------------------------------------------------
 st.divider()
-st.subheader("Element-Mengenliste")
-st.caption("Detaillierte Bauteilliste des Modells.")
+st.subheader("📋 Element-Mengenliste")
+st.caption("🔎 Detaillierte Bauteilliste des Modells.")
 
 table_df = element_df.copy()
 search = st.text_input(
-    "Suche (Bauteil-Typ oder Material)",
+    "🔎 Suche (Bauteil-Typ oder Material)",
     key="search_elements",
     placeholder="z.B. Beton, Wand...",
 )
@@ -264,5 +258,5 @@ for num_col in ["Fläche (m²)", "Volumen (m³)", "Länge (m)"]:
 
 display_df, _ = apply_unit_conversion(display_df, _u_area, _u_volume, _u_mass)
 _cap = unit_caption(_u_area, _u_volume, _u_mass)
-st.caption(f"{len(display_df):,} Elemente angezeigt" + (f" | {_cap}" if _cap else ""))
+st.caption(f"🧱 {len(display_df):,} Elemente angezeigt" + (f" | {_cap}" if _cap else ""))
 st.dataframe(display_df, use_container_width=True, hide_index=True)

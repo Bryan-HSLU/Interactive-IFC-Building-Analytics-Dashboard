@@ -2,7 +2,7 @@ import streamlit as st
 from src.state_manager import init_session_state
 
 st.set_page_config(
-    page_title="IFC Building Analytics",
+    page_title="IFC Cockpit",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -16,35 +16,38 @@ try:
 except FileNotFoundError:
     pass
 
-# Sidebar content when no file is loaded
 if not st.session_state.get("ifc_parsed"):
     with st.sidebar:
-        st.markdown("# IFC Analytics")
-        st.info("Upload an IFC file on **Page 1** to get started.")
+        st.markdown("# 🏗️ IFC Cockpit")
+        st.info("IFC-Datei auf **Seite 1** hochladen, um zu starten.")
 
-st.title("IFC Building Analytics Dashboard")
+st.title("🏗️ IFC Cockpit")
 st.markdown("""
-Welcome to the IFC Building Analytics Dashboard.
+Das **IFC Cockpit** liest IFC-Gebäudemodelle aus und stellt sie in vier Analysesichten dar —
+von der Modellübersicht bis zur Qualitätsprüfung.
 
-**Getting started:**
-1. Go to **1 Upload** in the sidebar
-2. Upload an IFC file
-3. Select the project mode (New Build / Renovation)
-4. Click **Start Analysis**
+| Sicht | Inhalt | Zielgruppe |
+|---|---|---|
+| 🏠 **Übersicht** | Elemente, Geschosse, Flächen, Status | Alle |
+| 🧱 **Mengen** | Materialien, Volumen, Bauteiltypen | Planer, Kalkulation |
+| 🌱 **Nachhaltigkeit & Kosten** | CO₂, Graue Energie, Baukosten (KBOB) | Ökobilanz, Bauherrschaft |
+| ✅ **Qualität** | Vollständigkeit der IFC-Attribute & Psets | BIM-Koordination |
 
-The analysis results will then be available on the other pages.
+**Start:** IFC-Datei auf → **1 Upload** hochladen, Projektmodus wählen, Analyse starten.
 """)
 
 if st.session_state.get("ifc_parsed"):
     metadata = st.session_state.get("model_metadata", {})
     mode = st.session_state.get("mode_project", "")
+    st.divider()
+    st.subheader("Geladenes Modell")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Project", metadata.get("project_name", "–"))
+        st.metric("Projekt", metadata.get("project_name", "–"))
     with col2:
-        st.metric("Elements", f"{metadata.get('element_count', 0):,}")
+        st.metric("Elemente", f"{metadata.get('element_count', 0):,}".replace(",", "'"))
     with col3:
-        mode_label = "New Build" if mode == "neubau" else "Renovation"
-        st.metric("Mode", mode_label)
+        mode_label = "Neubau" if mode == "neubau" else "Umbau"
+        st.metric("Modus", mode_label)
     with col4:
-        st.metric("Authors", "Bryan Wiederkehr · Genc Haxhija")
+        st.metric("IFC-Schema", metadata.get("schema", "–"))

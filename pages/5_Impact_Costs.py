@@ -105,10 +105,10 @@ if coverage < 100:
             st.dataframe(pd.DataFrame(unmatched, columns=["Nicht zugeordnete Materialien"]), use_container_width=True, hide_index=True)
 
 # ── Tabs ──
-tabs = ["\ud83c\udf31 Klima", "\ud83d\udcb0 Kosten"]
+tabs = ["🌱 Klima", "💰 Kosten"]
 if mode == "umbau":
-    tabs.append("\ud83d\udd04 Umbau & Zirkularität")
-tabs.append("\ud83d\udcca Daten")
+    tabs.append("🔄 Umbau & Zirkularität")
+tabs.append("📊 Daten")
 
 tab_objects = st.tabs(tabs)
 tab_klima = tab_objects[0]

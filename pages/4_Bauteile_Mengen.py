@@ -40,6 +40,18 @@ _u_area = st.session_state.get("unit_area", "m\u00b2")
 _u_volume = st.session_state.get("unit_volume", "m\u00b3")
 _u_mass = st.session_state.get("unit_mass", "kg")
 
+with st.expander("ℹ️ Was zeigt diese Seite?", expanded=False):
+    st.markdown("""
+    Diese Seite gibt einen **quantitativen Überblick über alle Bauteile und Materialien** des Modells:
+    - **Mengen nach Materialgruppe**: Welche Materialien sind verbaut — und wie viel (m³)? Balken anklicken zum Filtern.
+    - **Materialanteil pro Bauteilgruppe**: Zusammensetzung von Wand, Decke, Boden etc. im 100%-Vergleich.
+    - **CO₂-Intensität pro Geschoss**: Wärmekarte zeigt, wo CO₂-intensive Materialien konzentriert sind.
+    - **Element-Mengenliste**: Vollständige, suchbare Bauteilliste mit Fläche, Volumen und Länge.
+
+    Die Mengen stammen direkt aus dem IFC-Modell (Volumen, Fläche, Länge der Bauteile).
+    Einheiten können in der Seitenleiste angepasst werden (m³, ft³ etc.).
+    """)
+
 # Cross filter resets
 CF_KEYS = ["cf_page4_class", "cf_page4_material", "cf_page3_usage"]
 render_cross_filter_reset("page4", CF_KEYS)

@@ -32,6 +32,17 @@ if space_df is None or space_df.empty:
 st.title("🏠 Räume & Flächen")
 st.caption("📐 Ausreisser-Erkennung und quantitative Detailanalyse der Räume.")
 
+with st.expander("ℹ️ Was zeigt diese Seite?", expanded=False):
+    st.markdown("""
+    Diese Seite analysiert die **Räume und Flächen** des Gebäudes auf Basis der IfcSpace-Elemente:
+    - **Ausreisser-Erkennung**: Scatter Plot (Fläche vs. CO₂-Last) zeigt Räume mit ungewöhnlich hoher CO₂-Intensität.
+    - **CO₂-Dichte pro Raum**: Ranking aller Räume nach kg\u00a0CO₂eq\u00a0/\u00a0m² — klickbar zur Detailansicht.
+    - **Raum-Tabelle**: Suchbare Übersicht mit Fläche, Volumen, Hauptmaterial und farbcodierter CO₂-Last.
+
+    **IfcSpace** = Raumobjekt im IFC-Modell (wird von ArchiCAD/Revit exportiert, wenn Räume modelliert sind).
+    Die CO₂-Last pro Raum ergibt sich aus den angrenzenden Bauteilen und deren KBOB-Faktoren.
+    """)
+
 # Apply master filter from Overview Treemap
 CF_KEYS = ["cf_page3_usage"]
 render_cross_filter_reset("page3", CF_KEYS)

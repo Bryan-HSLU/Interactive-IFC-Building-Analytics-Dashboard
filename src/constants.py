@@ -25,6 +25,22 @@ STATUS_COLORS = {
     "Nicht gefunden": "#C9CDD3",
 }
 
+SIA_COLORS = {
+    "HNF": "#2E86AB",
+    "NNF": "#8D6E63",
+    "VF": "#5C8A6E",
+    "FF": "#7B5EA7",
+    "KF": "#C44536",
+}
+
+SIA_416_DESCRIPTIONS = {
+    "HNF": "Hauptnutzfläche (primary use)",
+    "NNF": "Nebennutzfläche (secondary use)",
+    "VF": "Verkehrsfläche (circulation)",
+    "FF": "Funktionsfläche (functional/services)",
+    "KF": "Konstruktionsfläche (construction)",
+}
+
 # Sequential scale for CO2: Low -> Mid -> High (CB-safe)
 CO2_SCALE = [
     "#FFF3B0",  # Niedrig

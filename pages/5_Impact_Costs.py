@@ -18,7 +18,7 @@ from src.chart_factory import (
 )
 from src.ui_helpers import hero_kpi_card, scenario_card, fmt_co2, fmt_chf
 from src.impact_calculator import get_match_coverage, get_unmatched_materials
-from src.constants import COLORS
+from src.constants import COLORS, SIA_416_MAP, SIA_416_DEFAULT, IFC_CLASS_LABELS
 
 init_session_state()
 
@@ -40,7 +40,7 @@ if not st.session_state.get("ifc_parsed"):
 element_df = get_element_df(filtered=True)
 space_df = get_space_df(filtered=True)
 
-st.title("🌱 Sustainability & Costs")
+st.title("🌱 Environmental & Cost Analysis")
 
 with st.expander("ℹ️ What does this page show?", expanded=False):
     st.markdown("""
@@ -64,12 +64,14 @@ energy_per_m2 = (total_grey_energy / total_area) if total_area > 0 else 0.0
 _, quality_summary = get_quality_data()
 quality_score = quality_summary.get("score", 0) if quality_summary else 0.0
 
+# Add grouped_material column once for the whole page
+if "material" in element_df.columns:
+    element_df = element_df.copy()
+    element_df["grouped_material"] = element_df["material"].apply(_classify_material_group)
+
 # Dynamic caption
-if total_co2 > 0 and "material" in element_df.columns:
-    _df_m = element_df.dropna(subset=["co2e_total"]).copy()
-    _df_m["co2_n"] = pd.to_numeric(_df_m["co2e_total"], errors="coerce")
-    _df_m["mat_grp"] = _df_m["material"].apply(_classify_material_group)
-    _agg = _df_m.groupby("mat_grp")["co2_n"].sum()
+if total_co2 > 0 and "grouped_material" in element_df.columns:
+    _agg = element_df.dropna(subset=["co2e_total"]).groupby("grouped_material")["co2e_total"].sum()
     if not _agg.empty:
         _top = _agg.idxmax()
         _pct = (_agg.max() / total_co2) * 100
@@ -108,6 +110,15 @@ if coverage < 100:
     if unmatched:
         with st.expander(f"⚠️ {100 - coverage:.0f} % of elements without KBOB assignment ({len(unmatched)} materials)", expanded=False):
             st.dataframe(pd.DataFrame(unmatched, columns=["Unassigned Materials"]), use_container_width=True, hide_index=True)
+
+# ── Material filter for Costs & Grey Energy ──
+all_mat_groups = sorted(element_df["grouped_material"].dropna().unique().tolist()) if "grouped_material" in element_df.columns else []
+selected_mat_groups = st.multiselect(
+    "🎨 Filter by material group (applies to Costs & Grey Energy tabs)",
+    options=all_mat_groups,
+    default=all_mat_groups,
+    key="p5_mat_filter",
+)
 
 # ── Tabs ──
 tabs = st.tabs(["🌱 CO₂ Emissions", "💰 Costs", "⚡ Grey Energy", "🔄 Combined / Trade-off"])
@@ -155,48 +166,129 @@ with tab_costs:
         Construction costs are calculated from **KBOB unit prices** (CHF per m³) multiplied by
         the component volume. These are indicative values for the early design phase — not binding cost estimates.
         """)
+
+    # Apply material filter
+    if selected_mat_groups and "grouped_material" in element_df.columns:
+        cost_df = element_df[element_df["grouped_material"].isin(selected_mat_groups)]
+    else:
+        cost_df = element_df
+
     col_cb, col_sc = st.columns([1, 2])
     with col_cb:
         st.subheader("Costs by Material")
         st.caption("Total costs per material group (KBOB reference values, CHF)")
-        st.plotly_chart(create_cost_breakdown_bar(element_df), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(create_cost_breakdown_bar(cost_df), use_container_width=True, config={"displayModeBar": False})
     with col_sc:
-        st.subheader("Costs vs. CO₂")
-        st.caption("Trade-off: expensive and CO₂-intensive vs. cost-efficient and climate-friendly (dot size = volume)")
-        st.plotly_chart(create_cost_co2_scatter(element_df), use_container_width=True, config={"displayModeBar": False})
+        st.subheader("Cost vs. Volume")
+        st.caption("Which component groups are cost-intensive relative to their volume? (dot size = element count)")
+
+        # Build cost vs. volume scatter by IFC class
+        if "ifc_class" in cost_df.columns and "volume_m3" in cost_df.columns and "cost_chf" in cost_df.columns:
+            _cv = cost_df.copy()
+            _cv["volume_m3"] = pd.to_numeric(_cv["volume_m3"], errors="coerce").fillna(0)
+            _cv["cost_chf"] = pd.to_numeric(_cv["cost_chf"], errors="coerce").fillna(0)
+            _cv_agg = _cv.groupby("ifc_class").agg(
+                total_vol=("volume_m3", "sum"),
+                total_cost=("cost_chf", "sum"),
+                count=("ifc_class", "size"),
+            ).reset_index()
+            _cv_agg = _cv_agg[(_cv_agg["total_vol"] > 0) | (_cv_agg["total_cost"] > 0)]
+            _cv_agg["label"] = _cv_agg["ifc_class"].map(IFC_CLASS_LABELS).fillna(_cv_agg["ifc_class"])
+
+            if not _cv_agg.empty:
+                _max_count = _cv_agg["count"].max()
+                _sizes = (_cv_agg["count"] / max(_max_count, 1) * 40 + 8).tolist()
+                fig_cv = go.Figure(go.Scatter(
+                    x=_cv_agg["total_vol"],
+                    y=_cv_agg["total_cost"],
+                    mode="markers+text",
+                    text=_cv_agg["label"],
+                    textposition="top center",
+                    marker=dict(size=_sizes, color=COLORS["primary"], opacity=0.7,
+                                line=dict(color="white", width=1)),
+                    hovertemplate="<b>%{text}</b><br>Volume: %{x:,.1f} m³<br>Cost: CHF %{y:,.0f}<extra></extra>",
+                ))
+                fig_cv.update_layout(
+                    template="plotly_white",
+                    xaxis_title="Total Volume (m³)",
+                    yaxis_title="Total Cost (CHF)",
+                    margin=dict(l=50, r=20, t=30, b=50),
+                    height=400,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_cv, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.info("No cost or volume data available for scatter.")
+        else:
+            st.info("No cost or volume data available.")
 
     # Cost efficiency (CHF/m²) if both cost and area data available
-    if total_cost > 0 and total_area > 0:
+    _filtered_cost = pd.to_numeric(cost_df.get("cost_chf", pd.Series(dtype=float)), errors="coerce").sum()
+    if _filtered_cost > 0 and total_area > 0:
         st.markdown("<br>", unsafe_allow_html=True)
-        cost_per_m2 = total_cost / total_area
+        cost_per_m2 = _filtered_cost / total_area
         st.metric("Cost Efficiency", f"CHF {cost_per_m2:,.0f} / m²".replace(",", "'"),
                   help="Total construction costs divided by net floor area (NGF)")
+
+    # Cost breakdown table
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("📋 Cost Breakdown Table")
+    st.caption("Sorted by total cost descending.")
+    if "ifc_class" in cost_df.columns and "cost_chf" in cost_df.columns:
+        _ct = cost_df.copy()
+        _ct["volume_m3"] = pd.to_numeric(_ct.get("volume_m3", pd.Series(dtype=float)), errors="coerce").fillna(0)
+        _ct["cost_chf"] = pd.to_numeric(_ct["cost_chf"], errors="coerce").fillna(0)
+        _ct_agg = _ct.groupby("ifc_class").agg(
+            total_vol=("volume_m3", "sum"),
+            total_cost=("cost_chf", "sum"),
+            count=("ifc_class", "size"),
+        ).reset_index()
+        _total_cost_all = _ct_agg["total_cost"].sum()
+        _ct_agg["cost_share_pct"] = (_ct_agg["total_cost"] / max(_total_cost_all, 1) * 100).round(1)
+        _ct_agg["cost_per_m3"] = (_ct_agg["total_cost"] / _ct_agg["total_vol"].replace(0, float("nan"))).round(1)
+        _ct_agg["label"] = _ct_agg["ifc_class"].map(IFC_CLASS_LABELS).fillna(_ct_agg["ifc_class"])
+        _ct_agg = _ct_agg.sort_values("total_cost", ascending=False)
+        _ct_display = _ct_agg[["label", "total_vol", "total_cost", "count", "cost_share_pct", "cost_per_m3"]].copy()
+        _ct_display.columns = ["Component Group", "Total Volume (m³)", "Total Cost (CHF)", "Elements", "Cost Share (%)", "Cost per m³ (CHF)"]
+        _ct_display["Total Volume (m³)"] = _ct_display["Total Volume (m³)"].round(1)
+        _ct_display["Total Cost (CHF)"] = _ct_display["Total Cost (CHF)"].round(0).astype(int)
+        st.dataframe(_ct_display, use_container_width=True, hide_index=True)
+    else:
+        st.info("No cost data available for table.")
 
 # ── Tab: Grey Energy ──
 with tab_energy:
     _ge_series = pd.to_numeric(element_df.get("grey_energy_kwh", pd.Series(dtype=float)), errors="coerce")
     _ge_has_data = _ge_series.notna().any() and _ge_series.sum() > 0
     if _ge_has_data:
+        # Apply material filter
+        if selected_mat_groups and "grouped_material" in element_df.columns:
+            ge_df = element_df[element_df["grouped_material"].isin(selected_mat_groups)]
+        else:
+            ge_df = element_df
+
         with st.expander("ℹ️ What is grey energy?", expanded=False):
             st.markdown("""
             **Grey energy** is the total energy required for production, transport and
             disposal of building materials — not operational energy. Unit: kWh.
             Source: KBOB factors (kWh primary energy per m³).
             """)
+
+        _ge_filtered = pd.to_numeric(ge_df.get("grey_energy_kwh", pd.Series(dtype=float)), errors="coerce").sum()
         col_ge1, col_ge2, col_ge_bar = st.columns([1, 1, 3])
         with col_ge1:
-            hero_kpi_card("GREY ENERGY", f"{total_grey_energy:,.0f}".replace(",", "'"), "kWh")
+            hero_kpi_card("GREY ENERGY", f"{_ge_filtered:,.0f}".replace(",", "'"), "kWh")
         with col_ge2:
-            hero_kpi_card("ENERGY / NGF", f"{energy_per_m2:,.1f}".replace(",", "'") if energy_per_m2 > 0 else "–", "kWh/m²")
+            _ep = (_ge_filtered / total_area) if total_area > 0 else 0.0
+            hero_kpi_card("ENERGY / NGF", f"{_ep:,.1f}".replace(",", "'") if _ep > 0 else "–", "kWh/m²")
         with col_ge_bar:
-            _df_ge = element_df.dropna(subset=["grey_energy_kwh"]).copy()
+            _df_ge = ge_df.dropna(subset=["grey_energy_kwh"]).copy()
             _df_ge["ge_num"] = pd.to_numeric(_df_ge["grey_energy_kwh"], errors="coerce").fillna(0)
-            _df_ge["mat_group"] = _df_ge["material"].apply(_classify_material_group)
+            _df_ge["mat_group"] = _df_ge["grouped_material"] if "grouped_material" in _df_ge.columns else _df_ge["material"].apply(_classify_material_group)
             _agg_ge = _df_ge.groupby("mat_group")["ge_num"].sum().reset_index()
             _agg_ge.columns = ["Material Group", "kWh"]
-            _agg_ge = _agg_ge[_agg_ge["kWh"] > 0]
-            _is_and = _agg_ge["Material Group"] == "Other"
-            _agg_ge = pd.concat([_agg_ge[_is_and], _agg_ge[~_is_and].sort_values("kWh", ascending=True)], ignore_index=True)
+            _agg_ge = _agg_ge[_agg_ge["kWh"] > 0].sort_values("kWh", ascending=True)
             _colors_ge = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in _agg_ge["Material Group"]]
             _max_ge = _agg_ge["kWh"].max() if not _agg_ge.empty else 1
             fig_ge = go.Figure(go.Bar(
@@ -214,6 +306,62 @@ with tab_energy:
                 showlegend=False, margin=dict(l=10, r=70, t=20, b=30), height=220,
             )
             st.plotly_chart(fig_ge, use_container_width=True, config={"displayModeBar": False})
+
+        # Embodied Energy per m² NRF by Component Group
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("⚡ Embodied Energy per m² NRF by Component Group")
+        st.caption("kWh per m² of Net Reference Floor Area (NRF = HNF + NNF) — directly comparable with KBOB benchmarks.")
+
+        # Compute NRF from IfcSpace data
+        nrf = 0.0
+        if space_df_raw is not None and not space_df_raw.empty and "area_m2" in space_df_raw.columns:
+            _sp = space_df_raw.copy()
+            _sp["area_m2"] = pd.to_numeric(_sp["area_m2"], errors="coerce").fillna(0)
+            if "usage" in _sp.columns:
+                def _to_sia(u):
+                    u_low = str(u).lower()
+                    for kw, g in SIA_416_MAP.items():
+                        if kw in u_low:
+                            return g
+                    return SIA_416_DEFAULT
+                _sp["sia_g"] = _sp["usage"].apply(_to_sia)
+                nrf = float(_sp[_sp["sia_g"].isin(["HNF", "NNF"])]["area_m2"].sum())
+
+        if nrf > 0 and "ifc_class" in ge_df.columns:
+            from src.constants import IFC_CLASS_LABELS as _ICL
+            _ge2 = ge_df.dropna(subset=["grey_energy_kwh"]).copy()
+            _ge2["ge_num"] = pd.to_numeric(_ge2["grey_energy_kwh"], errors="coerce").fillna(0)
+            _ge2["label"] = _ge2["ifc_class"].map(_ICL).fillna(_ge2["ifc_class"])
+            _ge2_agg = _ge2.groupby("label")["ge_num"].sum().reset_index()
+            _ge2_agg["ge_per_nrf"] = _ge2_agg["ge_num"] / nrf
+            _ge2_agg = _ge2_agg[_ge2_agg["ge_per_nrf"] > 0].sort_values("ge_per_nrf", ascending=True)
+
+            fig_ge_nrf = go.Figure(go.Bar(
+                x=_ge2_agg["ge_per_nrf"],
+                y=_ge2_agg["label"],
+                orientation="h",
+                marker_color=COLORS["primary"],
+                text=[f"{v:.1f}" for v in _ge2_agg["ge_per_nrf"]],
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate="<b>%{y}</b><br>%{x:.1f} kWh/m² NRF<extra></extra>",
+            ))
+            fig_ge_nrf.update_layout(
+                template="plotly_white",
+                xaxis_title="kWh / m² NRF",
+                yaxis_title="",
+                showlegend=False,
+                margin=dict(l=10, r=60, t=20, b=30),
+                height=max(260, len(_ge2_agg) * 32),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_ge_nrf, use_container_width=True, config={"displayModeBar": False})
+            st.caption(f"NRF (HNF + NNF) = {nrf:,.0f} m²".replace(",", "'"))
+        elif nrf == 0:
+            st.info("NRF cannot be calculated — no IfcSpace data or no HNF/NNF rooms found.")
+        else:
+            st.info("No IFC class data available for embodied energy per m² chart.")
     else:
         st.info("No grey energy data available — KBOB factors may not be matched.")
 

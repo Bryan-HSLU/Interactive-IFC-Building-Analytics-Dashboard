@@ -11,16 +11,16 @@ try:
 except FileNotFoundError:
     pass
 
-st.title("Upload & Projektmodus")
+st.title("Upload & Project Mode")
 
 # ── Section A: Upload & Mode Selection ────────────────────────────────────
 uploaded_file = st.file_uploader(
-    "IFC-Datei hochladen",
+    "Upload IFC file",
     type=["ifc"],
-    help="Unterstützte Formate: IFC2x3, IFC4",
+    help="Supported formats: IFC2x3, IFC4",
 )
 
-st.subheader("Projektmodus")
+st.subheader("Project Mode")
 col1, col2 = st.columns(2)
 
 with col1:
@@ -29,12 +29,12 @@ with col1:
     bg_neubau = "#EBF5FB" if neubau_selected else "#FAFAFA"
     st.markdown(
         f"""<div style="border:{border_neubau};border-radius:8px;padding:16px;background:{bg_neubau};cursor:pointer;">
-        <h3 style="margin:0">Neubau</h3>
-        <p style="margin:8px 0 0 0;color:#555;">Alle Elemente werden als Neubau behandelt.<br>Keine Statusauswertung aus IFC-Psets.</p>
+        <h3 style="margin:0">New Build</h3>
+        <p style="margin:8px 0 0 0;color:#555;">All elements are treated as new build.<br>No status evaluation from IFC psets.</p>
         </div>""",
         unsafe_allow_html=True,
     )
-    if st.button("Neubau wählen", key="btn_neubau", use_container_width=True):
+    if st.button("Select New Build", key="btn_neubau", use_container_width=True):
         st.session_state.mode_project = "neubau"
         st.rerun()
 
@@ -44,40 +44,40 @@ with col2:
     bg_umbau = "#FDEBD0" if umbau_selected else "#FAFAFA"
     st.markdown(
         f"""<div style="border:{border_umbau};border-radius:8px;padding:16px;background:{bg_umbau};cursor:pointer;">
-        <h3 style="margin:0">Umbau / Sanierung</h3>
-        <p style="margin:8px 0 0 0;color:#555;">Status wird aus IFC-Psets gelesen.<br>Fallback auf "Bestand" wenn keine Daten vorhanden.</p>
+        <h3 style="margin:0">Renovation / Refurbishment</h3>
+        <p style="margin:8px 0 0 0;color:#555;">Status is read from IFC psets.<br>Falls back to "Existing" when no data is available.</p>
         </div>""",
         unsafe_allow_html=True,
     )
-    if st.button("Umbau wählen", key="btn_umbau", use_container_width=True):
+    if st.button("Select Renovation", key="btn_umbau", use_container_width=True):
         st.session_state.mode_project = "umbau"
         st.rerun()
 
 # Pset configurator (Umbau only)
 pset_config = {}
 if st.session_state.get("mode_project") == "umbau":
-    st.subheader("Pset-Konfiguration")
+    st.subheader("Pset Configuration")
     pcol1, pcol2 = st.columns(2)
     with pcol1:
         pset_name = st.text_input(
-            "Pset-Name für Status",
+            "Pset name for status",
             value=st.session_state.get("mode_pset_name", ""),
-            placeholder="Leer = alle Psets durchsuchen",
+            placeholder="Empty = search all psets",
             key="pset_name_input",
         )
         st.session_state.mode_pset_name = pset_name
     with pcol2:
         pset_prop = st.text_input(
-            "Property-Name für Status",
+            "Property name for status",
             value=st.session_state.get("mode_pset_property", "Renovation Status"),
             key="pset_prop_input",
         )
         st.session_state.mode_pset_property = pset_prop
     pset_config = {"pset_name": pset_name, "pset_property": pset_prop}
     st.info(
-        "Erwartete Werte: **New** → Neubau | **Existing** → Bestand | **To Be Demolished** → Abbruch\n\n"
-        "Pset-Name leer lassen = alle Psets werden nach `Renovation Status` durchsucht. "
-        "Wenn kein Status gefunden wird, gilt **Bestand**."
+        "Expected values: **New** → New Build | **Existing** → Existing | **To Be Demolished** → Demolition\n\n"
+        "Leave pset name empty = all psets are searched for `Renovation Status`. "
+        "If no status is found, **Existing** applies."
     )
 else:
     pset_config = {
@@ -87,62 +87,62 @@ else:
         ),
     }
 
-# Analyse starten button
+# Start analysis button
 mode_ready = st.session_state.get("mode_project") is not None
 file_ready = uploaded_file is not None
 
 st.divider()
 btn_disabled = not (file_ready and mode_ready)
 if not file_ready:
-    st.caption("Bitte zuerst eine IFC-Datei hochladen.")
+    st.caption("Please upload an IFC file first.")
 if not mode_ready:
-    st.caption("Bitte einen Projektmodus wählen.")
+    st.caption("Please select a project mode.")
 
 if st.button(
-    "Analyse starten",
+    "Start Analysis",
     disabled=btn_disabled,
     type="primary",
     use_container_width=True,
 ):
     # ── Section B: Parsing Progress ────────────────────────────────────
     progress = st.progress(0)
-    status_box = st.status("Analyse wird gestartet…", expanded=True)
+    status_box = st.status("Starting analysis…", expanded=True)
 
     with status_box:
         warnings = []
 
-        st.write("Datei lesen…")
+        st.write("Reading file…")
         progress.progress(10)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
             tmp.write(uploaded_file.read())
             tmp_path = tmp.name
 
         try:
-            st.write("IFC-Schema erkennen…")
+            st.write("Detecting IFC schema…")
             progress.progress(20)
             from src.ifc_parser import parse_ifc_file
 
             parsed_data = parse_ifc_file(tmp_path)
 
-            schema = parsed_data.get("schema", "Unbekannt")
-            st.write(f"Schema erkannt: **{schema}**")
+            schema = parsed_data.get("schema", "Unknown")
+            st.write(f"Schema detected: **{schema}**")
             progress.progress(35)
 
-            st.write("Entities extrahieren…")
+            st.write("Extracting entities…")
             elem_count = len(parsed_data.get("elements", []))
-            st.write(f"   → {elem_count} Bauelemente gefunden")
+            st.write(f"   → {elem_count} building elements found")
             progress.progress(50)
 
-            st.write("IfcSpace auslesen…")
+            st.write("Reading IfcSpace…")
             space_count = len(parsed_data.get("spaces", []))
             if space_count == 0:
                 warnings.append(
-                    "IfcSpace nicht gefunden — Seite 3 (Räume & Flächen) ist für dieses Modell nicht verfügbar."
+                    "IfcSpace not found — Page 3 (Rooms & Areas) is not available for this model."
                 )
-            st.write(f"   → {space_count} Räume gefunden")
+            st.write(f"   → {space_count} rooms found")
             progress.progress(65)
 
-            st.write("Mengen berechnen & Status zuweisen…")
+            st.write("Calculating quantities & assigning status…")
             progress.progress(80)
 
             mode = st.session_state.get("mode_project", "neubau")
@@ -150,18 +150,18 @@ if st.button(
             st.session_state.ifc_file_path = tmp_path
 
             progress.progress(95)
-            st.write("Qualitätsprüfung abgeschlossen")
+            st.write("Quality check completed")
             progress.progress(100)
-            status_box.update(label="Analyse abgeschlossen", state="complete")
+            status_box.update(label="Analysis completed", state="complete")
 
         except ValueError as e:
-            status_box.update(label="Fehler bei der Analyse", state="error")
-            st.error(f"Fehler: {e}")
+            status_box.update(label="Error during analysis", state="error")
+            st.error(f"Error: {e}")
             os.unlink(tmp_path)
             st.stop()
         except Exception as e:
-            status_box.update(label="Unerwarteter Fehler", state="error")
-            st.error(f"Unerwarteter Fehler: {e}")
+            status_box.update(label="Unexpected error", state="error")
+            st.error(f"Unexpected error: {e}")
             os.unlink(tmp_path)
             st.stop()
 
@@ -173,7 +173,7 @@ if st.button(
 # ── Section C: Model Metadata (after analysis) ────────────────────────────
 if st.session_state.get("ifc_parsed"):
     st.divider()
-    st.subheader("Modell-Übersicht")
+    st.subheader("Model Overview")
 
     metadata = st.session_state.get("model_metadata", {})
     element_df = st.session_state.get("element_df")
@@ -181,7 +181,7 @@ if st.session_state.get("ifc_parsed"):
     storey_df = st.session_state.get("storey_df")
 
     _mode = st.session_state.get("mode_project", "")
-    _mode_label = "Neubau" if _mode == "neubau" else "Umbau / Sanierung"
+    _mode_label = "New Build" if _mode == "neubau" else "Renovation / Refurbishment"
     _mode_color = "#D6EAF8" if _mode == "neubau" else "#FDEBD0"
     st.markdown(
         f'<div style="display:inline-block;background:{_mode_color};border-radius:6px;'
@@ -193,35 +193,35 @@ if st.session_state.get("ifc_parsed"):
     _score = _quality_summary.get("score", 0) if _quality_summary else 0
     kpi_cols = st.columns(6)
     with kpi_cols[0]:
-        st.metric("Bauelemente", f"{metadata.get('element_count', 0):,}")
+        st.metric("Building Elements", f"{metadata.get('element_count', 0):,}")
     with kpi_cols[1]:
-        st.metric("Räume (IfcSpace)", f"{metadata.get('space_count', 0):,}")
+        st.metric("Rooms (IfcSpace)", f"{metadata.get('space_count', 0):,}")
     with kpi_cols[2]:
-        st.metric("Geschosse", f"{metadata.get('storey_count', 0):,}")
+        st.metric("Storeys", f"{metadata.get('storey_count', 0):,}")
     with kpi_cols[3]:
-        st.metric("IFC-Schema", metadata.get("schema", "–"))
+        st.metric("IFC Schema", metadata.get("schema", "–"))
     with kpi_cols[4]:
         st.metric("Software", metadata.get("application", "–"))
     with kpi_cols[5]:
-        st.metric("Modellqualität", f"{_score:.0f}%")
+        st.metric("Model Quality", f"{_score:.0f}%")
 
-    st.subheader("Projektinformationen")
+    st.subheader("Project Information")
     import pandas as pd
 
     meta_rows = {
-        "Projektname": metadata.get("project_name", "nicht im Modell hinterlegt"),
-        "Autor": metadata.get("author", "nicht im Modell hinterlegt"),
-        "Organisation": metadata.get("organization", "nicht im Modell hinterlegt"),
-        "IFC-Schema": metadata.get("schema", "–"),
-        "Exportierende Software": metadata.get(
-            "application", "nicht im Modell hinterlegt"
+        "Project Name": metadata.get("project_name", "not provided in model"),
+        "Author": metadata.get("author", "not provided in model"),
+        "Organization": metadata.get("organization", "not provided in model"),
+        "IFC Schema": metadata.get("schema", "–"),
+        "Exporting Software": metadata.get(
+            "application", "not provided in model"
         ),
     }
-    st.table(pd.DataFrame.from_dict(meta_rows, orient="index", columns=["Wert"]))
+    st.table(pd.DataFrame.from_dict(meta_rows, orient="index", columns=["Value"]))
 
     mode = st.session_state.get("mode_project")
     if mode == "umbau" and element_df is not None and not element_df.empty:
-        st.subheader("Statusverteilung (Umbau-Modus)")
+        st.subheader("Status Distribution (Renovation Mode)")
         status_counts = element_df["status"].value_counts()
         scols = st.columns(len(status_counts))
         for i, (status, count) in enumerate(status_counts.items()):
@@ -230,7 +230,7 @@ if st.session_state.get("ifc_parsed"):
         not_found = int((element_df["status"] == "Nicht gefunden").sum())
         if not_found > 0:
             st.warning(
-                f"{not_found} Elemente ohne Statusdaten — auf Seite 6 überprüfen."
+                f"{not_found} elements without status data — check on Page 6."
             )
 
     from src.filters import render_sidebar

@@ -8,7 +8,7 @@ from src.state_manager import (
     get_quality_data,
 )
 from src.filters import render_sidebar, render_cross_filter_reset
-from src.chart_factory import create_pset_lollipop_chart
+from src.chart_factory import create_pset_lollipop_chart, create_quality_radar
 from src.quality_checker import build_pset_matrix
 from src.constants import COLORS, STATUS_SHAPES
 
@@ -26,7 +26,7 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("Bitte zuerst eine IFC-Datei auf **Seite\u00a01** hochladen.")
+    st.warning("Please upload an IFC file on **Page 1** first.")
     st.stop()
 
 element_df = get_element_df(filtered=True)
@@ -37,42 +37,48 @@ error_df, quality_summary = check_quality(element_df, space_df, mode)
 quality_summary["score"] = calculate_quality_score(quality_summary)
 
 if not quality_summary:
-    st.title("Qualitätsprüfung")
-    st.warning("Keine Qualitätsdaten verfügbar.")
+    st.title("Quality Check")
+    st.warning("No quality data available.")
     st.stop()
 
-# Resolve metrics before any use
+# Resolve metrics
 score = quality_summary.get("score", 0)
 error_counts = quality_summary.get("error_counts", {})
 total_elements = quality_summary.get("total_elements", 0)
 total_errors = sum(error_counts.values())
 
-st.title("✅ Modellqualität")
+st.title("✅ Model Quality")
 
-with st.expander("ℹ️ Was prüft diese Seite?", expanded=False):
+with st.expander("ℹ️ What does this page check?", expanded=False):
     st.markdown("""
-    Die Qualitätsprüfung bewertet, wie vollständig und korrekt das IFC-Modell befüllt ist.
-    Für Berechnungen (CO\u2082, Kosten, Mengen) sind bestimmte Attribute zwingend:
-    - **Geschoss**: Jedem Bauteil muss eine Etage zugewiesen sein.
-    - **Material**: Ohne Materialzuweisung keine KBOB-Berechnung möglich.
-    - **Mengen**: Volumen oder Fläche benötigt für alle Mengennachweise.
-    - **Psets** (Property Sets): Strukturierte IFC-Attribute, die Fachmodelle austauschen.
+    The quality check evaluates how complete and correct the IFC model is.
+    Certain attributes are required for calculations (CO₂, costs, quantities):
+    - **Storey**: Every component must be assigned to a floor.
+    - **Material**: Without material assignment, KBOB calculation (CO₂, costs) is not possible.
+    - **Quantities**: Volume or area required for all quantity take-offs.
+    - **Psets** (Property Sets): Structured IFC attributes exchanged between discipline models.
+    - **Zero Volume**: Elements with volume ≤ 0 indicate modelling errors.
+    - **Duplicate GUIDs**: Duplicate element identifiers corrupt downstream analysis.
+    - **Orphaned Elements**: Elements without storey assignment cannot be placed in context.
 
-    **Qualitätsscore** = Anteil der Elemente ohne kritische Fehler (0\u2013100\u00a0%).
+    **Quality Score** = proportion of elements without critical errors (0–100 %).
     """)
 
 _MSG_MAP = {
-    "missing_storey": "Elemente ohne Geschosszuweisung",
-    "missing_material": "Elemente ohne Material",
-    "missing_quantity": "Elemente ohne Mengenangaben",
-    "missing_usage": "Räume ohne Nutzung",
-    "missing_status": "Elemente ohne Status",
+    "missing_storey": "Elements without storey assignment",
+    "missing_material": "Elements without material",
+    "missing_quantity": "Elements without quantity data",
+    "missing_usage": "Rooms without usage type",
+    "missing_status": "Elements without status",
+    "zero_volume": "Elements with zero/negative volume",
+    "duplicate_guid": "Elements with duplicate GUID",
+    "orphaned_element": "Elements without storey (orphaned)",
 }
 if total_errors > 0 and error_counts:
     worst_key = max(error_counts, key=error_counts.get)
-    st.caption(f"{error_counts[worst_key]:,} {_MSG_MAP.get(worst_key, 'Fehler')} — Mengen unsicher".replace(",", "'"))
+    st.caption(f"{error_counts[worst_key]:,} {_MSG_MAP.get(worst_key, 'errors')} — quantities uncertain".replace(",", "'"))
 else:
-    st.caption("Modell ist fehlerfrei und konsistent.")
+    st.caption("Model is error-free and consistent.")
 
 CF_KEYS = ["cf_page6_error_cat"]
 render_cross_filter_reset("page6", CF_KEYS)
@@ -84,13 +90,16 @@ if "selected_fehler" not in st.session_state:
     st.session_state["selected_fehler"] = None
 
 INDICATOR_CONFIG = [
-    ("missing_storey", "Ohne Geschoss", "critical"),
-    ("missing_material", "Ohne Material", "critical"),
-    ("missing_quantity", "Ohne Mengen", "warning"),
-    ("missing_usage", "Räume ohne Nutzung", "warning"),
+    ("missing_storey", "No Storey", "critical"),
+    ("missing_material", "No Material", "critical"),
+    ("missing_quantity", "No Quantities", "warning"),
+    ("missing_usage", "No Usage (Rooms)", "warning"),
+    ("zero_volume", "Zero Volume", "critical"),
+    ("duplicate_guid", "Duplicate GUID", "critical"),
+    ("orphaned_element", "Orphaned Element", "warning"),
 ]
 if mode == "umbau":
-    INDICATOR_CONFIG.append(("missing_status", "Ohne Status", "warning"))
+    INDICATOR_CONFIG.append(("missing_status", "No Status", "warning"))
 
 SEVERITY_COLORS = {"critical": COLORS["error_critical"], "warning": COLORS["error_warning"], "ok": COLORS["error_ok"]}
 SEVERITY_LABELS = {"critical": f"{STATUS_SHAPES['critical']} Critical", "warning": f"{STATUS_SHAPES['warning']} Warning", "ok": f"{STATUS_SHAPES['ok']} OK"}
@@ -119,21 +128,21 @@ for lbl in labels:
         bar_colors.append("#CCCCCC")
 
 # ── Tabs ──
-tab_overview, tab_pset, tab_struktur = st.tabs(["📊 Übersicht", "📋 Pset-Abdeckung", "🔧 Struktur"])
+tab_overview, tab_pset, tab_struktur = st.tabs(["📊 Overview", "📋 Pset Coverage", "🔧 Structure"])
 
-# ── Tab: Übersicht ──
+# ── Tab: Overview ──
 with tab_overview:
-    col_kpi, col_bar = st.columns([1, 2])
+    col_kpi, col_radar = st.columns([1, 1])
     with col_kpi:
         selected = st.session_state.get("selected_fehler")
         if selected and selected in indicator_lookup:
             fe_info = indicator_lookup[selected]
             fe_count = fe_info["value"]
-            kpi_title = f"QUALITÄT OHNE<br>{selected.upper()}"
+            kpi_title = f"QUALITY WITHOUT<br>{selected.upper()}"
             kpi_value = round((total_elements - fe_count) / total_elements * 100, 1) if total_elements > 0 else 0
-            kpi_subtitle = f"(Gesamt: {score:.1f}%)"
+            kpi_subtitle = f"(Total: {score:.1f}%)"
         else:
-            kpi_title = "MODELLQUALITÄT"
+            kpi_title = "MODEL QUALITY"
             kpi_value = score
             kpi_subtitle = ""
 
@@ -143,7 +152,7 @@ with tab_overview:
         st.markdown(
             f"""<div style="background:#FFFFFF;border:1px solid #E8E8E8;border-radius:12px;
             padding:28px 24px 22px 24px;box-shadow:0 2px 8px rgba(0,0,0,0.06);
-            text-align:center;height:480px;display:flex;flex-direction:column;justify-content:center;">
+            text-align:center;height:380px;display:flex;flex-direction:column;justify-content:center;">
                 <div style="color:#888;font-size:13px;font-weight:600;letter-spacing:0.05em;margin-bottom:8px;">{kpi_title}</div>
                 <div style="font-size:72px;font-weight:800;color:#1A1A2E;line-height:1.0;margin-bottom:24px;">
                     {kpi_value:.1f}<span style="font-size:34px;font-weight:600;color:#888;">%</span></div>
@@ -158,17 +167,28 @@ with tab_overview:
             unsafe_allow_html=True,
         )
 
-    with col_bar:
-        st.subheader("Qualitätsindikatoren")
-        with st.expander("ℹ️ Was bedeuten die Indikatoren?", expanded=False):
+    with col_radar:
+        st.subheader("Quality Profile")
+        st.caption("5-dimensional quality radar: coverage across key attributes.")
+        st.plotly_chart(create_quality_radar(error_counts, total_elements), use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col_bar_full = st.columns(1)[0]
+    with col_bar_full:
+        st.subheader("Quality Indicators")
+        with st.expander("ℹ️ What do the indicators mean?", expanded=False):
             st.markdown("""
-            | Indikator | Bedeutung | Auswirkung |
+            | Indicator | Meaning | Impact |
             |---|---|---|
-            | **Ohne Geschoss** | Bauteil keiner Etage zugeordnet | CO\u2082-Verteilung per Geschoss unmöglich |
-            | **Ohne Material** | Kein Materialname vorhanden | Keine KBOB-Berechnung (CO\u2082, Kosten) |
-            | **Ohne Mengen** | Kein Volumen/Fläche angegeben | Mengenauswertung unvollständig |
-            | **Räume ohne Nutzung** | IfcSpace ohne Nutzungstyp | NFA-Verteilung verfälscht |
-            | **Ohne Status** | Kein Bestand/Neubau/Abbruch | Umbau-Bilanz nicht berechenbar |
+            | **No Storey** | Component not assigned to a floor | CO₂ distribution per storey impossible |
+            | **No Material** | No material name present | No KBOB calculation (CO₂, costs) |
+            | **No Quantities** | No volume/area specified | Quantity take-off incomplete |
+            | **No Usage (Rooms)** | IfcSpace without usage type | NFA distribution distorted |
+            | **No Status** | No existing/new/demolition classification | Renovation balance uncalculable |
+            | **Zero Volume** | Volume ≤ 0 | Modelling error — invalid geometry |
+            | **Duplicate GUID** | Duplicate element identifier | Corrupt downstream analysis |
+            | **Orphaned Element** | Element without storey | Cannot be placed in context |
             """)
         hover_texts = []
         for lbl in labels:
@@ -176,7 +196,7 @@ with tab_overview:
             val = info["value"]
             pct = round(val / total_elements * 100, 1) if total_elements > 0 else 0
             sev_label = SEVERITY_LABELS.get(info["effective_severity"], "OK")
-            hover_texts.append(f"<b>{lbl}</b><br>Anzahl: {val}<br>Anteil: {pct}%<br>Schweregrad: {sev_label}")
+            hover_texts.append(f"<b>{lbl}</b><br>Count: {val}<br>Share: {pct}%<br>Severity: {sev_label}")
 
         fig_hbar = go.Figure(go.Bar(
             x=values, y=labels, orientation="h",
@@ -188,7 +208,7 @@ with tab_overview:
         max_val = max(values) if values else 1
         fig_hbar.update_layout(
             margin=dict(t=10, b=10, l=10, r=60), height=360,
-            xaxis=dict(title="Anzahl Fehler", showgrid=True, gridcolor="#F0F0F0", zeroline=False, range=[0, max_val * 1.35]),
+            xaxis=dict(title="Number of Errors", showgrid=True, gridcolor="#F0F0F0", zeroline=False, range=[0, max_val * 1.35]),
             yaxis=dict(autorange="reversed", tickfont=dict(size=13)),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             showlegend=False, bargap=0.35,
@@ -208,9 +228,9 @@ with tab_overview:
                         st.rerun()
 
         if total_errors == 0:
-            st.success(f"Modell vollständig – alle {_fmt(total_elements)} Elemente haben die Pflichtfelder befüllt.")
+            st.success(f"Model complete – all {_fmt(total_elements)} elements have mandatory fields filled.")
         else:
-            st.warning(f"{_fmt(total_errors)} Probleme in {_fmt(total_elements)} Elementen gefunden.")
+            st.warning(f"{_fmt(total_errors)} issues found across {_fmt(total_elements)} elements.")
 
     # Detail table on click
     if selected_fehler and selected_fehler in indicator_lookup:
@@ -219,29 +239,73 @@ with tab_overview:
         fe_count = fe_info["value"]
         st.divider()
         if fe_count == 0:
-            st.success(f"✓ Keine betroffenen Elemente für \u00ab{selected_fehler}\u00bb.")
+            st.success(f"✓ No affected elements for «{selected_fehler}».")
         else:
-            st.markdown(f"#### 🔍 Betroffene Elemente – {selected_fehler}")
+            st.markdown(f"#### 🔍 Affected Elements – {selected_fehler}")
             if error_df is not None and not error_df.empty:
                 filtered_errors = error_df[error_df["error_type"] == fe_key].copy()
                 display_cols = {}
                 for c in ["element_id", "ifc_class", "storey", "description"]:
                     if c in filtered_errors.columns:
-                        display_cols[c] = {"element_id": "Element-ID", "ifc_class": "IFC-Klasse", "storey": "Geschoss", "description": "Fehlertyp"}.get(c, c)
+                        display_cols[c] = {"element_id": "Element ID", "ifc_class": "IFC Class", "storey": "Storey", "description": "Error Description"}.get(c, c)
                 display_df = filtered_errors.rename(columns=display_cols)
                 show_cols = [v for v in display_cols.values() if v in display_df.columns]
                 st.dataframe(display_df[show_cols], use_container_width=True, hide_index=True)
-        if st.button("✕ Auswahl aufheben", key="reset_fehler", use_container_width=True):
+        if st.button("✕ Clear Selection", key="reset_fehler", use_container_width=True):
             st.session_state["selected_fehler"] = None
             st.rerun()
 
-# ── Tab: Pset-Abdeckung ──
+    # Errors per storey stacked bar
+    if error_df is not None and not error_df.empty and "storey" in error_df.columns:
+        st.divider()
+        st.subheader("Errors per Storey")
+        st.caption("Distribution of errors by storey and error type — identifies problem floors.")
+        storey_err = error_df.groupby(["storey", "error_type"]).size().reset_index(name="count")
+        err_types = sorted(storey_err["error_type"].unique())
+        storeys = sorted(storey_err["storey"].dropna().unique())
+
+        ERR_COLORS = {
+            "missing_storey": COLORS["error_warning"],
+            "missing_material": COLORS["error_warning"],
+            "missing_quantity": COLORS["error_critical"],
+            "missing_usage": COLORS["primary"],
+            "missing_status": COLORS["primary"],
+            "zero_volume": COLORS["error_critical"],
+            "duplicate_guid": COLORS["error_critical"],
+            "orphaned_element": COLORS["error_warning"],
+        }
+
+        fig_storey_err = go.Figure()
+        for et in err_types:
+            sub = storey_err[storey_err["error_type"] == et]
+            storey_counts = {row["storey"]: row["count"] for _, row in sub.iterrows()}
+            fig_storey_err.add_trace(go.Bar(
+                name=et.replace("_", " ").title(),
+                x=storeys,
+                y=[storey_counts.get(s, 0) for s in storeys],
+                marker_color=ERR_COLORS.get(et, "#CCCCCC"),
+                hovertemplate=f"<b>{et}</b><br>Storey: %{{x}}<br>Count: %{{y}}<extra></extra>",
+            ))
+        fig_storey_err.update_layout(
+            template="plotly_white",
+            barmode="stack",
+            xaxis_title="Storey",
+            yaxis_title="Number of Errors",
+            margin=dict(l=40, r=20, t=30, b=40),
+            height=320,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", y=-0.3, xanchor="center", x=0.5),
+        )
+        st.plotly_chart(fig_storey_err, use_container_width=True, config={"displayModeBar": False})
+
+# ── Tab: Pset Coverage ──
 with tab_pset:
-    with st.expander("ℹ️ Was sind Psets?", expanded=False):
+    with st.expander("ℹ️ What are Psets?", expanded=False):
         st.markdown("""
-        **Property Sets (Psets)** sind strukturierte Attributgruppen in IFC, z.\u00a0B. `Pset_WallCommon`
-        für Wände mit Attributen wie Feuerwiderstand, Wärmedurchgang usw.
-        Vollständige Psets sind Voraussetzung für den Datenaustausch zwischen Fachmodellen (Tragwerk, Haustechnik).
+        **Property Sets (Psets)** are structured attribute groups in IFC, e.g. `Pset_WallCommon`
+        for walls with attributes like fire resistance, thermal transmittance etc.
+        Complete Psets are a prerequisite for data exchange between discipline models (structural, MEP).
         """)
     if element_df is not None and not element_df.empty:
         pset_matrix = build_pset_matrix(element_df)
@@ -264,12 +328,12 @@ with tab_pset:
                 if sel_cls and sel_cls in class_completeness:
                     lkpi_title = f"PSET: {sel_cls}"
                     lkpi_val = class_completeness[sel_cls]
-                    lkpi_sub = f"{class_missing[sel_cls]} von {total_psets} Psets fehlen"
+                    lkpi_sub = f"{class_missing[sel_cls]} of {total_psets} Psets missing"
                 else:
-                    lkpi_title = "PSET-QUALITÄT (\u00d8)"
+                    lkpi_title = "PSET QUALITY (Avg)"
                     overall = sum(class_completeness.values()) / len(class_completeness) if class_completeness else 0
                     lkpi_val = round(overall, 1)
-                    lkpi_sub = f"\u00d8 über {len(class_completeness)} IFC-Klassen"
+                    lkpi_sub = f"Avg over {len(class_completeness)} IFC classes"
 
                 lkpi_bw = max(0.0, min(float(lkpi_val), 100.0))
                 lkpi_bc = "#2E86AB" if lkpi_val >= 50 else "#E07B39"
@@ -288,7 +352,7 @@ with tab_pset:
                     unsafe_allow_html=True,
                 )
                 if sel_cls:
-                    if st.button("↩ Gesamtansicht", key="reset_klasse", use_container_width=True):
+                    if st.button("↩ Full View", key="reset_klasse", use_container_width=True):
                         st.session_state["selected_klasse"] = None
                         st.rerun()
 
@@ -303,26 +367,74 @@ with tab_pset:
                             if st.session_state.get("selected_klasse") != clicked_cls:
                                 st.session_state["selected_klasse"] = clicked_cls
                                 st.rerun()
-        else:
-            st.info("Keine Pset-Daten verfügbar.")
-    else:
-        st.info("Keine Elementdaten verfügbar.")
 
-# ── Tab: Struktur ──
+            # Completeness matrix heatmap: IFC class × attribute
+            st.divider()
+            st.subheader("Attribute Completeness Matrix")
+            st.caption("Heatmap: presence of key attributes per IFC class — blue = present, white = missing.")
+            if "ifc_class" in element_df.columns:
+                key_attrs = ["material", "volume_m3", "storey", "usage"]
+                avail_attrs = [a for a in key_attrs if a in element_df.columns]
+                if avail_attrs:
+                    classes = sorted(element_df["ifc_class"].dropna().unique())
+                    z_data = []
+                    hover_data = []
+                    for cls in classes:
+                        sub = element_df[element_df["ifc_class"] == cls]
+                        row_z = []
+                        row_h = []
+                        for attr in avail_attrs:
+                            if attr == "material":
+                                present = (~sub[attr].isin(["", "nan", "Unbekannt", "Unknown", None]) & sub[attr].notna()).sum()
+                            else:
+                                present = sub[attr].notna().sum()
+                            pct = present / len(sub) * 100 if len(sub) > 0 else 0
+                            row_z.append(round(pct, 1))
+                            row_h.append(f"{pct:.0f}% ({present}/{len(sub)})")
+                        z_data.append(row_z)
+                        hover_data.append(row_h)
+
+                    fig_attr_heatmap = go.Figure(go.Heatmap(
+                        z=z_data,
+                        x=avail_attrs,
+                        y=classes,
+                        colorscale=[[0, "#FFFFFF"], [0.5, "#A8D4E6"], [1, "#2E86AB"]],
+                        zmin=0, zmax=100,
+                        showscale=True,
+                        colorbar=dict(title="% Present", ticksuffix="%"),
+                        hovertemplate="Class: %{y}<br>Attribute: %{x}<br>%{text}<extra></extra>",
+                        text=hover_data,
+                    ))
+                    fig_attr_heatmap.update_layout(
+                        template="plotly_white",
+                        xaxis=dict(title="Attribute", tickangle=0),
+                        yaxis=dict(title="IFC Class", autorange="reversed"),
+                        margin=dict(l=20, r=20, t=30, b=50),
+                        height=max(300, len(classes) * 28),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(fig_attr_heatmap, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("No Pset data available.")
+    else:
+        st.info("No element data available.")
+
+# ── Tab: Structure ──
 with tab_struktur:
-    st.subheader("Strukturelle Vollständigkeit")
-    with st.expander("ℹ️ Was wird hier geprüft?", expanded=False):
+    st.subheader("Structural Completeness")
+    with st.expander("ℹ️ What is checked here?", expanded=False):
         st.markdown("""
-        Zusätzliche Prüfungen, die über die Basis-Fehler hinausgehen:
-        - **Ohne Geschoss-Zuordnung**: Elemente, bei denen `storey` fehlt oder nicht erkannt wurde.
-        - **Ohne Bauteiltyp**: Elemente ohne `type_name` — erschwert die Filterung und Auswertung.
-        - **Ohne Material**: Anteil Elemente ohne Materialzuweisung (separat nach IFC-Klasse).
+        Additional checks that go beyond the basic errors:
+        - **No Storey Assignment**: Elements where `storey` is missing or not recognised.
+        - **No Component Type**: Elements without `type_name` — hinders filtering and analysis.
+        - **No Material**: Share of elements without material assignment (separately by IFC class).
         """)
 
     if element_df is not None and not element_df.empty:
         col_s1, col_s2, col_s3 = st.columns(3)
 
-        # Check 1: ohne Geschoss
+        # Check 1: no storey
         with col_s1:
             if "storey" in element_df.columns:
                 no_storey = element_df[element_df["storey"].isin(["", "nan", "Nicht zugeordnet", None]) | element_df["storey"].isna()]
@@ -331,17 +443,17 @@ with tab_struktur:
                 color_ns = COLORS["error_critical"] if pct_ns > 10 else (COLORS["error_warning"] if pct_ns > 0 else COLORS["error_ok"])
                 st.markdown(
                     f"""<div style="background:#FFF;border-left:4px solid {color_ns};padding:16px 20px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.07);">
-                        <div style="font-size:13px;color:#6B7280;font-weight:600;">OHNE GESCHOSS</div>
+                        <div style="font-size:13px;color:#6B7280;font-weight:600;">NO STOREY</div>
                         <div style="font-size:40px;font-weight:800;color:#1A1A2E;">{_fmt(n_no_storey)}</div>
-                        <div style="font-size:13px;color:#6B7280;">{pct_ns:.1f}% der Elemente</div>
-                        <div style="font-size:12px;color:#9CA3AF;margin-top:6px;">Bauteil keiner Etage zugewiesen — CO₂-Verteilung per Geschoss unmöglich.</div>
+                        <div style="font-size:13px;color:#6B7280;">{pct_ns:.1f}% of elements</div>
+                        <div style="font-size:12px;color:#9CA3AF;margin-top:6px;">Component not assigned to a floor — CO₂ distribution per storey impossible.</div>
                     </div>""",
                     unsafe_allow_html=True,
                 )
             else:
-                st.info("Spalte `storey` nicht verfügbar.")
+                st.info("Column `storey` not available.")
 
-        # Check 2: ohne type_name
+        # Check 2: no type_name
         with col_s2:
             if "type_name" in element_df.columns:
                 no_type = element_df[element_df["type_name"].isin(["", "nan", None]) | element_df["type_name"].isna()]
@@ -350,17 +462,17 @@ with tab_struktur:
                 color_nt = COLORS["error_critical"] if pct_nt > 20 else (COLORS["error_warning"] if pct_nt > 0 else COLORS["error_ok"])
                 st.markdown(
                     f"""<div style="background:#FFF;border-left:4px solid {color_nt};padding:16px 20px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.07);">
-                        <div style="font-size:13px;color:#6B7280;font-weight:600;">OHNE BAUTEILTYP</div>
+                        <div style="font-size:13px;color:#6B7280;font-weight:600;">NO COMPONENT TYPE</div>
                         <div style="font-size:40px;font-weight:800;color:#1A1A2E;">{_fmt(n_no_type)}</div>
-                        <div style="font-size:13px;color:#6B7280;">{pct_nt:.1f}% der Elemente</div>
-                        <div style="font-size:12px;color:#9CA3AF;margin-top:6px;">Kein `type_name` — erschwert Filterung und Bauteilklassifikation.</div>
+                        <div style="font-size:13px;color:#6B7280;">{pct_nt:.1f}% of elements</div>
+                        <div style="font-size:12px;color:#9CA3AF;margin-top:6px;">No `type_name` — hinders filtering and component classification.</div>
                     </div>""",
                     unsafe_allow_html=True,
                 )
             else:
-                st.info("Spalte `type_name` nicht verfügbar.")
+                st.info("Column `type_name` not available.")
 
-        # Check 3: ohne Material
+        # Check 3: no material
         with col_s3:
             if "material" in element_df.columns:
                 no_mat = element_df[element_df["material"].isin(["", "nan", "Unbekannt", None]) | element_df["material"].isna()]
@@ -369,20 +481,20 @@ with tab_struktur:
                 color_nm = COLORS["error_critical"] if pct_nm > 15 else (COLORS["error_warning"] if pct_nm > 0 else COLORS["error_ok"])
                 st.markdown(
                     f"""<div style="background:#FFF;border-left:4px solid {color_nm};padding:16px 20px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.07);">
-                        <div style="font-size:13px;color:#6B7280;font-weight:600;">OHNE MATERIAL</div>
+                        <div style="font-size:13px;color:#6B7280;font-weight:600;">NO MATERIAL</div>
                         <div style="font-size:40px;font-weight:800;color:#1A1A2E;">{_fmt(n_no_mat)}</div>
-                        <div style="font-size:13px;color:#6B7280;">{pct_nm:.1f}% der Elemente</div>
-                        <div style="font-size:12px;color:#9CA3AF;margin-top:6px;">Keine KBOB-Berechnung (CO₂, Kosten) ohne Materialzuweisung möglich.</div>
+                        <div style="font-size:13px;color:#6B7280;">{pct_nm:.1f}% of elements</div>
+                        <div style="font-size:12px;color:#9CA3AF;margin-top:6px;">No KBOB calculation (CO₂, costs) without material assignment.</div>
                     </div>""",
                     unsafe_allow_html=True,
                 )
             else:
-                st.info("Spalte `material` nicht verfügbar.")
+                st.info("Column `material` not available.")
 
-        # Material-Abdeckung je IFC-Klasse
+        # Material coverage per IFC class
         st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("Materialabdeckung je IFC-Klasse")
-        st.caption("Anteil Elemente mit Materialzuweisung pro IFC-Typ — zeigt, welche Klassen besonders lückenhaft modelliert sind.")
+        st.subheader("Material Coverage per IFC Class")
+        st.caption("Share of elements with material assignment per IFC type — shows which classes are most sparsely modelled.")
         if "ifc_class" in element_df.columns and "material" in element_df.columns:
             _df_mc = element_df.copy()
             _df_mc["has_material"] = ~(_df_mc["material"].isin(["", "nan", "Unbekannt", None]) | _df_mc["material"].isna())
@@ -396,16 +508,16 @@ with tab_struktur:
                 marker_color=_colors_mc,
                 text=[f"{p:.0f}%" for p in _mc_agg["pct"]],
                 textposition="outside", cliponaxis=False,
-                hovertemplate="<b>%{y}</b><br>%{x:.1f}% mit Material (%{customdata[0]} von %{customdata[1]})<extra></extra>",
+                hovertemplate="<b>%{y}</b><br>%{x:.1f}% with material (%{customdata[0]} of %{customdata[1]})<extra></extra>",
                 customdata=list(zip(_mc_agg["with_mat"], _mc_agg["total"])),
             ))
             fig_mc.update_layout(
                 template="plotly_white",
                 font=dict(family="Inter, sans-serif", size=12, color=COLORS["text"]),
-                xaxis=dict(title="% mit Material", range=[0, 115], ticksuffix="%", gridcolor=COLORS["grid"], showgrid=True, zeroline=False),
+                xaxis=dict(title="% with Material", range=[0, 115], ticksuffix="%", gridcolor=COLORS["grid"], showgrid=True, zeroline=False),
                 yaxis=dict(title=""), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 showlegend=False, margin=dict(l=10, r=50, t=20, b=30),
             )
             st.plotly_chart(fig_mc, use_container_width=True, config={"displayModeBar": False})
     else:
-        st.info("Keine Elementdaten verfügbar.")
+        st.info("No element data available.")

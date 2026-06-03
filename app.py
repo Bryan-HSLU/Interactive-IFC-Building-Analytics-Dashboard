@@ -2,7 +2,7 @@ import streamlit as st
 from src.state_manager import init_session_state
 
 st.set_page_config(
-    page_title="IFC Cockpit",
+    page_title="IFC Building Analytics Dashboard",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -18,36 +18,36 @@ except FileNotFoundError:
 
 if not st.session_state.get("ifc_parsed"):
     with st.sidebar:
-        st.markdown("# 🏗️ IFC Cockpit")
-        st.info("IFC-Datei auf **Seite 1** hochladen, um zu starten.")
+        st.markdown("# 🏗️ IFC Building Analytics Dashboard")
+        st.info("Upload an IFC file on **Page 1** to get started.")
 
-st.title("🏗️ IFC Cockpit")
+st.title("🏗️ IFC Building Analytics Dashboard")
 st.markdown("""
-Das **IFC Cockpit** liest IFC-Gebäudemodelle aus und stellt sie in vier Analysesichten dar —
-von der Modellübersicht bis zur Qualitätsprüfung.
+The **IFC Building Analytics Dashboard** reads IFC building models and presents them in four analysis views —
+from the model overview to quality checks.
 
-| Sicht | Inhalt | Zielgruppe |
+| View | Content | Audience |
 |---|---|---|
-| 🏠 **Übersicht** | Elemente, Geschosse, Flächen, Status | Alle |
-| 🧱 **Mengen** | Materialien, Volumen, Bauteiltypen | Planer, Kalkulation |
-| 🌱 **Nachhaltigkeit & Kosten** | CO₂, Graue Energie, Baukosten (KBOB) | Ökobilanz, Bauherrschaft |
-| ✅ **Qualität** | Vollständigkeit der IFC-Attribute & Psets | BIM-Koordination |
+| 🏠 **Overview** | Elements, storeys, areas, status | All |
+| 🧱 **Quantities** | Materials, volumes, component types | Planners, Estimation |
+| 🌱 **Sustainability & Costs** | CO₂, grey energy, construction costs (KBOB) | LCA, Clients |
+| ✅ **Quality** | Completeness of IFC attributes & Psets | BIM Coordination |
 
-**Start:** IFC-Datei auf → **1 Upload** hochladen, Projektmodus wählen, Analyse starten.
+**Start:** Upload an IFC file on → **1 Upload**, choose project mode, and start the analysis.
 """)
 
 if st.session_state.get("ifc_parsed"):
     metadata = st.session_state.get("model_metadata", {})
     mode = st.session_state.get("mode_project", "")
     st.divider()
-    st.subheader("Geladenes Modell")
+    st.subheader("Loaded Model")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Projekt", metadata.get("project_name", "–"))
+        st.metric("Project", metadata.get("project_name", "–"))
     with col2:
-        st.metric("Elemente", f"{metadata.get('element_count', 0):,}".replace(",", "'"))
+        st.metric("Elements", f"{metadata.get('element_count', 0):,}".replace(",", "'"))
     with col3:
-        mode_label = "Neubau" if mode == "neubau" else "Umbau"
-        st.metric("Modus", mode_label)
+        mode_label = "New Build" if mode == "neubau" else "Renovation"
+        st.metric("Mode", mode_label)
     with col4:
-        st.metric("IFC-Schema", metadata.get("schema", "–"))
+        st.metric("IFC Schema", metadata.get("schema", "–"))

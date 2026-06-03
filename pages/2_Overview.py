@@ -20,7 +20,7 @@ mode = st.session_state.get("mode_project", "")
 render_sidebar(element_df_raw, space_df_raw, mode)
 
 if not st.session_state.get("ifc_parsed"):
-    st.warning("Bitte zuerst eine IFC-Datei auf **Seite\u00a01** hochladen.")
+    st.warning("Please upload an IFC file on **Page 1** first.")
     st.stop()
 
 element_df = get_element_df(filtered=True)
@@ -28,7 +28,7 @@ space_df = get_space_df(filtered=True)
 has_spaces = space_df is not None and not space_df.empty
 metadata = st.session_state.get("model_metadata", {})
 
-st.title("🏠 Gebäude-Cockpit")
+st.title("🏠 Building Overview")
 
 # Dynamic caption
 if has_spaces and "area_m2" in space_df.columns and space_df["area_m2"].sum() > 0:
@@ -37,23 +37,23 @@ if has_spaces and "area_m2" in space_df.columns and space_df["area_m2"].sum() > 
     if not agg_u.empty:
         dominant_usage = agg_u.idxmax()
         pct = (agg_u.max() / total_a) * 100
-        st.caption(f"{len(space_df)} Räume auf {total_a:,.0f} m² — **{dominant_usage}** belegt {pct:.0f}\u00a0% der NFA".replace(",", "'"))
+        st.caption(f"{len(space_df)} rooms over {total_a:,.0f} m² — **{dominant_usage}** occupies {pct:.0f} % of NFA".replace(",", "'"))
     else:
-        st.caption("Schneller Überblick über Modellstruktur, Bauteiltypen und räumliche Verteilung.")
+        st.caption("Quick overview of model structure, component types and spatial distribution.")
 else:
-    st.caption("Schneller Überblick über Modellstruktur, Bauteiltypen und räumliche Verteilung.")
+    st.caption("Quick overview of model structure, component types and spatial distribution.")
 
-with st.expander("ℹ️ Was zeigt diese Seite?", expanded=False):
+with st.expander("ℹ️ What does this page show?", expanded=False):
     st.markdown("""
-    Das **Gebäude-Cockpit** gibt einen strukturierten Üblick über das IFC-Modell:
-    - **Modell-Tab**: Welche Bauteiltypen (IFC-Klassen wie Wand, Decke, Fenster…) sind wie häufig vorhanden? Metadaten wie Projektname und Schema-Version.
-    - **Status-Tab**: Wie verteilt sich das Gebäude auf Bestand, Neubau und Abbruch?
-    - **Räumlich-Tab**: Welche Nutzungstypen belegen wie viel Fläche (NFA)?
+    The **Building Overview** gives a structured overview of the IFC model:
+    - **Model Tab**: Which component types (IFC classes like wall, slab, window…) are present and how often? Metadata like project name and schema version.
+    - **Status Tab**: How are elements distributed across existing, new build and demolition?
+    - **Spatial Tab**: Which usage types occupy how much area (NFA)?
 
-    Klicken Sie in Charts, um andere Seiten zu filtern.
+    Click in charts to filter other pages.
     """)
 
-# ── KPI Row (Modell-Cockpit: Elemente, Geschosse, Klassen, Qualität) ──
+# ── KPI Row ──
 n_elements = len(element_df) if element_df is not None else 0
 n_storeys = element_df["storey"].nunique() if element_df is not None and "storey" in element_df.columns else 0
 n_classes = element_df["ifc_class"].nunique() if element_df is not None and "ifc_class" in element_df.columns else 0
@@ -62,39 +62,39 @@ quality_score = quality_summary.get("score", 0) if quality_summary else 0.0
 
 kcols = st.columns(4)
 with kcols[0]:
-    hero_kpi_card("ELEMENTE", f"{n_elements:,}".replace(",", "'"), "Bauteile")
+    hero_kpi_card("ELEMENTS", f"{n_elements:,}".replace(",", "'"), "Components")
 with kcols[1]:
-    hero_kpi_card("GESCHOSSE", str(n_storeys), "Ebenen")
+    hero_kpi_card("STOREYS", str(n_storeys), "Levels")
 with kcols[2]:
-    hero_kpi_card("IFC-KLASSEN", str(n_classes), "Typen")
+    hero_kpi_card("IFC CLASSES", str(n_classes), "Types")
 with kcols[3]:
-    hero_kpi_card("QUALITÄT", f"{quality_score:.0f}", "%")
+    hero_kpi_card("QUALITY", f"{quality_score:.0f}", "%")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Tabs ──
-tab_modell, tab_status, tab_raeumlich = st.tabs(["🏗️ Modell", "🔄 Status", "🗺️ Räumlich"])
+tab_modell, tab_status, tab_raeumlich = st.tabs(["🏗️ Model", "🔄 Status", "🗺️ Spatial"])
 
-# ── Tab: Modell ──
+# ── Tab: Model ──
 with tab_modell:
     col_chart, col_meta = st.columns([2, 1])
     with col_chart:
-        st.subheader("IFC-Klassen-Verteilung")
-        st.caption("Anzahl Bauteile je IFC-Klasse — zeigt, welche Elementtypen im Modell dominieren.")
+        st.subheader("IFC Class Distribution")
+        st.caption("Number of components per IFC class — shows which element types dominate the model.")
         if element_df is not None and "ifc_class" in element_df.columns:
             st.plotly_chart(create_ifc_class_bar(element_df), use_container_width=True, config={"displayModeBar": False})
         else:
-            st.info("Keine IFC-Klassendaten verfügbar.")
+            st.info("No IFC class data available.")
     with col_meta:
-        st.subheader("Modell-Metadaten")
-        st.caption("Technische Grunddaten des geladenen IFC-Modells.")
+        st.subheader("Model Metadata")
+        st.caption("Technical details of the loaded IFC model.")
         meta_items = [
-            ("Projektname", metadata.get("project_name", "–")),
-            ("IFC-Schema", metadata.get("schema", "–")),
-            ("Autorensoftware", metadata.get("authoring_tool", "–")),
-            ("Elemente gesamt", f"{metadata.get('element_count', n_elements):,}".replace(",", "'")),
-            ("Geschosse", str(n_storeys)),
-            ("IFC-Klassen", str(n_classes)),
+            ("Project Name", metadata.get("project_name", "–")),
+            ("IFC Schema", metadata.get("schema", "–")),
+            ("Authoring Tool", metadata.get("authoring_tool", "–")),
+            ("Total Elements", f"{metadata.get('element_count', n_elements):,}".replace(",", "'")),
+            ("Storeys", str(n_storeys)),
+            ("IFC Classes", str(n_classes)),
         ]
         for label, value in meta_items:
             st.markdown(
@@ -109,52 +109,65 @@ with tab_modell:
 
 # ── Tab: Status ──
 with tab_status:
-    st.subheader("Phasen- & Statusverteilung")
+    st.subheader("Phase & Status Distribution")
     st.caption(
-        "Anteil von Bestand, Neubau, Abbruch und Temporär am Gesamtmodell (nach Elementanzahl). "
-        "Relevant für Projektmanagement und Bauherrschaft."
+        "Share of existing, new build, demolition and temporary elements in the total model (by element count). "
+        "Relevant for project management and clients."
     )
-    with st.expander("ℹ️ Was bedeuten die Status-Kategorien?", expanded=False):
+    with st.expander("ℹ️ What do the status categories mean?", expanded=False):
         st.markdown("""
-        - **Bestand**: Vorhandene Bauteile, die erhalten bleiben.
-        - **Neubau**: Neu erstellte oder geplante Bauteile.
-        - **Abbruch**: Bauteile, die rückgebaut werden.
-        - **Temporär**: Baubehelfe oder zeitlich begrenzte Elemente.
+        - **Bestand**: Existing components that are retained.
+        - **Neubau**: Newly created or planned components.
+        - **Abbruch**: Components to be demolished.
+        - **Temporär**: Temporary structures or time-limited elements.
 
-        Im Neubau-Modus sind alle Elemente als „Neubau“ klassiert.
+        In new build mode all elements are classified as "Neubau".
         """)
     if element_df is not None and "status" in element_df.columns:
         st.plotly_chart(create_status_donut(element_df), use_container_width=True, config={"displayModeBar": False})
     else:
-        st.info("Keine Statusdaten verfügbar — möglicherweise kein Umbau-Modus gewählt.")
+        st.info("No status data available — renovation mode may not be selected.")
 
-# ── Tab: Räumlich ──
+# ── Tab: Spatial ──
 with tab_raeumlich:
-    st.subheader("Räumliche Flächenverteilung (NFA)")
+    st.subheader("Spatial Area Distribution (NFA)")
     st.caption(
-        "Proportionen der Raumtypen nach Netto-Geschössfläche (NFA). "
-        "Klicken Sie auf einen Typ, um andere Seiten zu filtern."
+        "Proportions of room types by net floor area (NFA). "
+        "Click on a type to filter other pages."
     )
-    with st.expander("ℹ️ Was ist die NFA?", expanded=False):
+    with st.expander("ℹ️ What is NFA?", expanded=False):
         st.markdown("""
-        Die **Netto-Geschössfläche (NFA)** ist die nutzbare Innenfläche aller Geschosse — ohne Wände,
-        Konstruktion und Installationsflächen. Die Flächen stammen aus den IfcSpace-Elementen des Modells.
+        The **Net Floor Area (NFA)** is the usable interior area across all storeys — excluding walls,
+        structure and service areas. The areas come from the IfcSpace elements in the model.
+        The treemap uses **SIA-416** categories: HNF (primary use), NNF (secondary), VF (circulation), FF (functional), KF (construction).
         """)
     if has_spaces:
         fig_tree = create_room_treemap(space_df)
         ev_tree = st.plotly_chart(fig_tree, on_select="rerun", key="ov_treemap", use_container_width=True)
         if ev_tree and ev_tree.selection and ev_tree.selection.points:
             pt = ev_tree.selection.points[0]
-            clicked = pt.get("label") or pt.get("id") or ""
-            if clicked:
+            # Use customdata for the raw usage value (leaf nodes have non-empty customdata)
+            usage_val = pt.get("customdata") if pt.get("customdata") else ""
+            clicked_id = pt.get("id") or ""
+            # Only filter on leaf (usage-level) clicks; SIA group clicks do nothing
+            if clicked_id.startswith("sia::") or clicked_id == "root":
+                pass  # SIA group or root click — no filtering
+            elif usage_val:
+                clicked_clean = str(usage_val).strip()
+                if clicked_clean and clicked_clean != st.session_state.get("cf_page3_usage"):
+                    st.session_state.cf_page3_usage = clicked_clean
+                    st.rerun()
+            else:
+                # Fallback: use label
+                clicked = pt.get("label") or pt.get("id") or ""
                 clicked_clean = clicked.replace("<b>", "").replace("</b>", "").strip()
-                if clicked_clean in ("Gesamt", "root", "Total"):
-                    if st.session_state.get("cf_page3_usage") != "Gesamt":
-                        st.session_state.cf_page3_usage = "Gesamt"
+                if clicked_clean in ("Total Building", "Total", "root"):
+                    if st.session_state.get("cf_page3_usage") != "Total":
+                        st.session_state.cf_page3_usage = "Total"
                         st.rerun()
-                else:
+                elif clicked_clean:
                     if clicked_clean != st.session_state.get("cf_page3_usage"):
                         st.session_state.cf_page3_usage = clicked_clean
                         st.rerun()
     else:
-        st.info("Dieses Modell enthält keine Räume (IfcSpace) für eine Treemap-Flächenverteilung.")
+        st.info("This model contains no rooms (IfcSpace) for a treemap area distribution.")

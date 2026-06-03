@@ -14,6 +14,9 @@ from src.constants import (
     MATERIAL_GROUP_COLORS as _MATERIAL_GROUP_COLORS,
     HOLZ_TRIGGERS as _HOLZ_TRIGGERS,
     RAUM_GRUPPEN,
+    SIA_416_MAP,
+    SIA_416_DEFAULT,
+    IFC_CLASS_LABELS,
 )
 
 
@@ -24,7 +27,7 @@ def _classify_material_group(material_name: str) -> str:
         for t in triggers:
             if t in name:
                 return group
-    return "Andere"
+    return "Other"
 
 
 def apply_default_layout(fig: go.Figure, title: str = None) -> go.Figure:
@@ -108,54 +111,79 @@ def _get_room_color(usage: str) -> str:
     return ROOM_COLORS.get("Andere", "#C9CDD3")
 
 
-# ── Treemap: "Welcher Raumtyp nimmt wie viel Fläche ein?" ──────────────────
+# ── Treemap: Room Area by SIA-416 Group → Usage Type ──────────────────────
 
 
 def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
     if space_df.empty or "area_m2" not in space_df.columns:
-        return _empty_fig("Keine Raumdaten für Treemap verfügbar")
+        return _empty_fig("No room data available for treemap")
 
     df = space_df.copy()
     df["area_m2"] = pd.to_numeric(df["area_m2"], errors="coerce").fillna(0)
     df = df[df["area_m2"] > 0]
 
     if df.empty:
-        return _empty_fig("Keine positiven Raumflächen")
+        return _empty_fig("No positive room areas found")
 
-    agg = df.groupby("usage")["area_m2"].sum().reset_index()
-    agg = agg.sort_values("area_m2", ascending=False)
+    def _map_usage_to_sia(usage_str):
+        u = str(usage_str).lower()
+        for keyword, group in SIA_416_MAP.items():
+            if keyword in u:
+                return group
+        return SIA_416_DEFAULT
 
-    if len(agg) > 5:
-        top = agg.head(5)
-        rest_val = agg.iloc[5:]["area_m2"].sum()
-        rest_row = pd.DataFrame([{"usage": "Andere", "area_m2": rest_val}])
-        agg = pd.concat([top, rest_row], ignore_index=True)
+    df["sia_group"] = df["usage"].apply(_map_usage_to_sia)
+    agg = df.groupby(["sia_group", "usage"])["area_m2"].sum().reset_index()
 
-    labels = ["<b>Gesamt</b>"]
+    sia_totals = agg.groupby("sia_group")["area_m2"].sum()
+    total_area = agg["area_m2"].sum()
+
+    ids = ["root"]
+    labels = ["Total Building"]
     parents = [""]
-    values = [agg["area_m2"].sum()]
-    colors = [_get_room_color("<b>Gesamt</b>")]
+    values = [total_area]
+    customdata = [""]
+
+    for sia_group, sia_area in sia_totals.items():
+        ids.append(f"sia::{sia_group}")
+        labels.append(sia_group)
+        parents.append("root")
+        values.append(sia_area)
+        customdata.append("")
 
     for _, row in agg.iterrows():
-        labels.append(row["usage"])
-        parents.append("<b>Gesamt</b>")
+        usage = row["usage"]
+        ids.append(f"usage::{usage}")
+        labels.append(usage)
+        parents.append(f"sia::{row['sia_group']}")
         values.append(row["area_m2"])
-        colors.append(_get_room_color(row["usage"]))
+        customdata.append(usage)
+
+    colors = []
+    for id_, lbl in zip(ids, labels):
+        if id_ == "root":
+            colors.append(_get_room_color("total"))
+        elif id_.startswith("sia::"):
+            colors.append(_get_room_color(lbl))
+        else:
+            colors.append(_get_room_color(lbl))
 
     fig = go.Figure(
         go.Treemap(
+            ids=ids,
             labels=labels,
             parents=parents,
             values=values,
             branchvalues="total",
+            customdata=customdata,
             textinfo="label+value",
             texttemplate="<b>%{label}</b><br>%{value:.1f} m²",
-            hovertemplate="<b>%{label}</b><br>Fläche: %{value:.1f} m²<br>Anteil: %{percentRoot:.1%}<extra></extra>",
+            hovertemplate="<b>%{label}</b><br>Area: %{value:.1f} m²<br>Share: %{percentRoot:.1%}<extra></extra>",
             marker=dict(colors=colors, colorscale=None),
             textfont=dict(size=14, family="Inter, sans-serif"),
         )
     )
-    apply_default_layout(fig, "Raumfläche nach Nutzungstyp (NFA)")
+    apply_default_layout(fig, "Room Area by Usage Type (NFA)")
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))
     return fig
 
@@ -180,7 +208,7 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
     agg.columns = ["material", "quantity"]
     total_volume = agg["quantity"].sum()
 
-    is_andere = agg["material"] == "Andere"
+    is_andere = agg["material"] == "Other"
     andere_row = agg[is_andere]
     main_rows = agg[~is_andere].sort_values("quantity", ascending=True)
 
@@ -199,7 +227,7 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
             marker_color=colors,
             text=[f"{v:,.1f}" for v in agg["quantity"]],
             textposition="outside",
-            hovertemplate=f"<b>%{{y}}</b><br>Menge: %{{x:.1f}} {unit}<extra></extra>",
+            hovertemplate=f"<b>%{{y}}</b><br>Quantity: %{{x:.1f}} {unit}<extra></extra>",
         )
     )
 
@@ -212,7 +240,7 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
         fig.add_annotation(
             x=max_qty,
             y=max_material,
-            text=f"macht {pct:.1f}% des Gesamtvolumens aus",
+            text=f"accounts for {pct:.1f}% of total volume",
             showarrow=False,
             xanchor="left",
             xshift=65,
@@ -224,11 +252,11 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
             align="left",
         )
 
-    apply_default_layout(fig, f"Materialmengen im Gebäude ({unit})")
+    apply_default_layout(fig, f"Material Quantities in Building ({unit})")
     max_val = agg["quantity"].max()
     fig.update_layout(
         title=dict(
-            text=f"Materialmengen im Gebäude ({unit})",
+            text=f"Material Quantities in Building ({unit})",
             font=dict(size=14, color=COLORS["text"]),
             x=0.0,
             y=0.98,
@@ -281,7 +309,7 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
             agg_haupt = pd.concat([andere_row, agg_haupt], ignore_index=True)
 
     agg = agg_haupt.copy()
-    is_andere = agg["material"] == "Andere"
+    is_andere = agg["material"] == "Other"
     andere_rows = agg[is_andere]
     haupt_rows = agg[~is_andere].sort_values("co2", ascending=True)
     agg = pd.concat([andere_rows, haupt_rows], ignore_index=True)
@@ -318,7 +346,7 @@ def create_material_co2_bar(element_df: pd.DataFrame) -> go.Figure:
         annotation_font=dict(size=11, color=COLORS["text_light"]),
     )
 
-    apply_default_layout(fig, "CO₂-Fussabdruck nach Materialgruppe")
+    apply_default_layout(fig, "CO₂ Footprint by Material Group")
     fig.update_layout(xaxis_title="kg CO₂eq", yaxis_title="")
     return fig
 
@@ -570,8 +598,8 @@ def create_room_co2_scatter(space_df: pd.DataFrame, selected_raum: str = None) -
 
 
 def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
-    part_order = ["Wand", "Boden", "Decke"]
-    group_order = ["Beton", "Holz", "Metall", "Dämmung", "Glas", "Andere"]
+    part_order = ["Wall", "Floor", "Ceiling", "Column", "Beam", "Door", "Window", "Roof", "Stair", "Other"]
+    group_order = ["Concrete", "Wood", "Metal", "Insulation", "Glass", "Other"]
 
     if (
         element_df.empty
@@ -586,9 +614,9 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             cls = row.get("ifc_class", "")
             type_name = str(row.get("type_name", "")).lower()
             if cls in ("IfcWall", "IfcWallStandardCase", "IfcCurtainWall"):
-                return "Wand"
+                return "Wall"
             elif cls == "IfcRoof":
-                return "Decke"
+                return "Roof"
             elif cls == "IfcSlab":
                 if (
                     "decke" in type_name
@@ -596,14 +624,23 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
                     or "roof" in type_name
                     or "ceiling" in type_name
                 ):
-                    return "Decke"
+                    return "Ceiling"
                 else:
-                    return "Boden"
+                    return "Floor"
+            elif cls == "IfcColumn":
+                return "Column"
+            elif cls == "IfcBeam":
+                return "Beam"
+            elif cls == "IfcDoor":
+                return "Door"
+            elif cls == "IfcWindow":
+                return "Window"
+            elif cls in ("IfcStair", "IfcStairFlight"):
+                return "Stair"
             else:
-                return "Sonstige"
+                return "Other"
 
         df["part"] = df.apply(_map_class_to_part, axis=1)
-        df = df[df["part"] != "Sonstige"]
 
         if df.empty:
             pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
@@ -619,7 +656,7 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
 
     fig = go.Figure()
     for grp in group_order:
-        color = _MATERIAL_GROUP_COLORS[grp]
+        color = _MATERIAL_GROUP_COLORS.get(grp, "#BDBDBD")
         fig.add_trace(
             go.Bar(
                 x=pivot_pct.index,
@@ -631,10 +668,10 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
         )
 
     fig.update_layout(barmode="stack")
-    apply_default_layout(fig, "Materialanteil pro Bauteilgruppe")
+    apply_default_layout(fig, "Material Share per Component Group")
     fig.update_layout(
         title=dict(
-            text="Materialanteil pro Bauteilgruppe",
+            text="Material Share per Component Group",
             font=dict(size=14, color=COLORS["text"]),
             x=0.0,
             y=0.98,
@@ -642,7 +679,7 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             xanchor="left",
         ),
         xaxis_title="",
-        yaxis_title="Materialanteil (%)",
+        yaxis_title="Material Share (%)",
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -679,7 +716,7 @@ def create_quality_gauge(score: float) -> go.Figure:
                     "value": score,
                 },
             },
-            title={"text": "Modellqualität", "font": {"size": 16, "weight": "bold"}},
+            title={"text": "Model Quality", "font": {"size": 16, "weight": "bold"}},
         )
     )
     fig.update_layout(
@@ -1109,30 +1146,51 @@ def create_sia_gauge(co2_per_m2: float, limit: float = 11.0) -> go.Figure:
     fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
     return fig
 
-def create_storey_material_heatmap(element_df: pd.DataFrame) -> go.Figure:
-    if element_df is None or element_df.empty or "storey" not in element_df.columns or "co2e_total" not in element_df.columns:
-        return _empty_fig("Daten für Heatmap fehlen")
-        
-    df_m = element_df.dropna(subset=["storey", "grouped_material", "co2e_total"]).copy()
-    df_m["co2_num"] = pd.to_numeric(df_m["co2e_total"], errors="coerce").fillna(0)
-    
-    pivot = df_m.pivot_table(index="storey", columns="grouped_material", values="co2_num", aggfunc="sum").fillna(0)
+def create_storey_material_heatmap(element_df: pd.DataFrame, value_col: str = "co2e_total", title: str = None) -> go.Figure:
+    if element_df is None or element_df.empty or "storey" not in element_df.columns:
+        return _empty_fig("Data for heatmap missing")
+    if value_col not in element_df.columns:
+        return _empty_fig(f"Column '{value_col}' not available")
+
+    # Ensure grouped_material column exists
+    df_m = element_df.copy()
+    if "grouped_material" not in df_m.columns:
+        if "material" in df_m.columns:
+            df_m["grouped_material"] = df_m["material"].apply(_classify_material_group)
+        else:
+            return _empty_fig("No material data available")
+
+    df_m = df_m.dropna(subset=["storey", "grouped_material", value_col]).copy()
+    df_m["val_num"] = pd.to_numeric(df_m[value_col], errors="coerce").fillna(0)
+
+    pivot = df_m.pivot_table(index="storey", columns="grouped_material", values="val_num", aggfunc="sum").fillna(0)
     if pivot.empty:
-        return _empty_fig("Keine Daten nach Filterung")
-        
+        return _empty_fig("No data after filtering")
+
     storeys_sorted = sorted(pivot.index.tolist())
     pivot = pivot.reindex(storeys_sorted)
-    
+
+    unit = "m³" if "volume" in value_col else "kg"
+    hover_suffix = f" {unit}"
+
+    if title is None:
+        if "co2" in value_col:
+            title = "CO₂ by Storey and Material (kg)"
+        elif "volume" in value_col:
+            title = "Volume by Storey and Material (m³)"
+        else:
+            title = f"{value_col} by Storey and Material"
+
     fig = go.Figure(data=go.Heatmap(
         z=pivot.values,
         x=pivot.columns.tolist(),
         y=pivot.index.tolist(),
         colorscale=[[0, "#FFFFFF"], [1, COLORS["error_critical"]]],
-        hovertemplate="Geschoss: %{y}<br>Material: %{x}<br>CO₂: %{z:,.0f} kg<extra></extra>",
+        hovertemplate="Storey: %{y}<br>Material: %{x}<br>Value: %{z:,.1f}" + hover_suffix + "<extra></extra>",
         showscale=True
     ))
-    
-    fig = apply_default_layout(fig, "")
+
+    fig = apply_default_layout(fig, title)
     return fig
 
 def create_renovation_waterfall(element_df: pd.DataFrame) -> go.Figure:
@@ -1321,6 +1379,113 @@ def create_ifc_class_bar(element_df: pd.DataFrame) -> go.Figure:
 
 
 # ── Status-/Phasenverteilung (Cockpit Overview) ───────────────────────────────
+
+
+def create_material_flow_sankey(element_df):
+    """Sankey: material group → element type → volume (flow encoding)."""
+    df = element_df.copy()
+    df["mat_group"] = df["material"].apply(_classify_material_group)
+    df["elem_type"] = df["ifc_class"].map(IFC_CLASS_LABELS).fillna("Other")
+
+    if "volume_m3" not in df.columns:
+        return _empty_fig("No volume data for Sankey")
+
+    agg = df.groupby(["mat_group", "elem_type"])["volume_m3"].sum().reset_index()
+    agg = agg[agg["volume_m3"] > 0]
+
+    if agg.empty:
+        return _empty_fig("No volume data after aggregation")
+
+    mat_groups = sorted(agg["mat_group"].unique().tolist())
+    elem_types = sorted(agg["elem_type"].unique().tolist())
+
+    nodes = mat_groups + elem_types
+    node_idx = {n: i for i, n in enumerate(nodes)}
+
+    source = [node_idx[r["mat_group"]] for _, r in agg.iterrows()]
+    target = [node_idx[r["elem_type"]] for _, r in agg.iterrows()]
+    value = agg["volume_m3"].tolist()
+
+    fig = go.Figure(go.Sankey(
+        node=dict(label=nodes, pad=15, thickness=20),
+        link=dict(source=source, target=target, value=value,
+                  hovertemplate="%{source.label} → %{target.label}: %{value:.1f} m³<extra></extra>")
+    ))
+    fig.update_layout(title="Material Flow: Material Group → Element Type (Volume)", height=500)
+    return apply_default_layout(fig)
+
+
+def create_quality_radar(error_counts, total_elements):
+    """Radar chart: 5-dimensional quality profile."""
+    if total_elements == 0:
+        return _empty_fig("No elements")
+
+    def coverage(key):
+        return max(0, 100 - (error_counts.get(key, 0) / total_elements * 100))
+
+    categories = ["Material\nCoverage", "Quantity\nCompleteness", "Storey\nAssignment",
+                  "Pset\nCompleteness", "Usage\nCoverage"]
+    values = [
+        coverage("missing_material"),
+        coverage("missing_quantity"),
+        coverage("missing_storey"),
+        coverage("missing_pset") if "missing_pset" in error_counts else 100,
+        coverage("missing_usage"),
+    ]
+    values_closed = values + [values[0]]
+    cats_closed = categories + [categories[0]]
+
+    fig = go.Figure(go.Scatterpolar(
+        r=values_closed, theta=cats_closed, fill="toself",
+        line_color="#2196F3", fillcolor="rgba(33,150,243,0.2)",
+        hovertemplate="%{theta}: %{r:.1f}%<extra></extra>"
+    ))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(range=[0, 100], ticksuffix="%")),
+        title="Quality Profile", height=400
+    )
+    return apply_default_layout(fig)
+
+
+def create_co2_diverging_bar(element_df):
+    """Diverging bar: saved CO₂ (Bestand, negative) vs new emissions (Neubau, positive) per material group."""
+    df = element_df.copy()
+    if "co2_total" not in df.columns or "status" not in df.columns:
+        # Try co2e_total column
+        if "co2e_total" in df.columns and "status" in df.columns:
+            df["co2_total"] = df["co2e_total"]
+        else:
+            return _empty_fig("No CO₂ data available for renovation analysis")
+    df["mat_group"] = df["material"].apply(_classify_material_group)
+
+    new_co2 = df[df["status"] == "Neubau"].groupby("mat_group")["co2_total"].sum()
+    saved_co2 = df[df["status"] == "Bestand"].groupby("mat_group")["co2_total"].sum()
+
+    groups = sorted(set(new_co2.index) | set(saved_co2.index))
+    if not groups:
+        return _empty_fig("No renovation status data found")
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="New Emissions (Neubau)", x=groups,
+        y=[new_co2.get(g, 0) for g in groups],
+        marker_color="#EF5350",
+        hovertemplate="%{x}: +%{y:.1f} kg CO₂eq<extra>New</extra>"
+    ))
+    fig.add_trace(go.Bar(
+        name="Saved (Retained)", x=groups,
+        y=[-saved_co2.get(g, 0) for g in groups],
+        marker_color="#66BB6A",
+        hovertemplate="%{x}: %{y:.1f} kg CO₂eq<extra>Retained</extra>"
+    ))
+    fig.update_layout(
+        barmode="overlay", title="CO₂ Balance by Material Group (Renovation Mode)",
+        yaxis_title="kg CO₂eq", xaxis_title="Material Group",
+        shapes=[dict(type="line", x0=-0.5, x1=len(groups)-0.5, y0=0, y1=0,
+                     line=dict(color="black", width=1))],
+        height=400
+    )
+    return apply_default_layout(fig)
 
 
 def create_status_donut(element_df: pd.DataFrame) -> go.Figure:

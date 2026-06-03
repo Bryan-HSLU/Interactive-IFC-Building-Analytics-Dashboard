@@ -105,26 +105,28 @@ UNITS = {
 }
 
 IFC_CLASS_LABELS = {
-    "IfcWall": "Wand",
-    "IfcWallStandardCase": "Wand",
-    "IfcSlab": "Decke/Boden",
-    "IfcColumn": "Stütze",
-    "IfcBeam": "Balken",
-    "IfcDoor": "Tür",
-    "IfcWindow": "Fenster",
-    "IfcRoof": "Dach",
-    "IfcStair": "Treppe",
-    "IfcStairFlight": "Treppenlauf",
-    "IfcRailing": "Geländer",
-    "IfcCovering": "Bekleidung",
-    "IfcCurtainWall": "Vorhangfassade",
-    "IfcPlate": "Platte",
-    "IfcMember": "Bauteil",
-    "IfcBuildingElementProxy": "Sonstiges",
-    "IfcFlowSegment": "Rohrleitung",
-    "IfcFlowTerminal": "Anschlussgerät",
-    "IfcFlowFitting": "Rohrverbindung",
-    "IfcEnergyConversionDevice": "Energiegerät",
+    "IfcWall": "Wall",
+    "IfcWallStandardCase": "Wall",
+    "IfcSlab": "Slab",
+    "IfcColumn": "Column",
+    "IfcBeam": "Beam",
+    "IfcDoor": "Door",
+    "IfcWindow": "Window",
+    "IfcRoof": "Roof",
+    "IfcStair": "Stair",
+    "IfcStairFlight": "Stair Flight",
+    "IfcRailing": "Railing",
+    "IfcCovering": "Covering",
+    "IfcCurtainWall": "Curtain Wall",
+    "IfcPlate": "Plate",
+    "IfcMember": "Member",
+    "IfcBuildingElementProxy": "Generic Element",
+    "IfcFlowSegment": "Pipe Segment",
+    "IfcFlowTerminal": "Flow Terminal",
+    "IfcFlowFitting": "Pipe Fitting",
+    "IfcEnergyConversionDevice": "Energy Device",
+    "IfcFooting": "Footing",
+    "IfcPile": "Pile",
 }
 
 ERROR_SEVERITY_THRESHOLDS = {
@@ -180,7 +182,7 @@ MATERIAL_GROUP_RULES = [
             "sichtbeton",
             "fertigteil",
         ],
-        "Beton",
+        "Concrete",
     ),
     (
         [
@@ -194,7 +196,7 @@ MATERIAL_GROUP_RULES = [
             "eiche",
             "lärche",
         ],
-        "Holz",
+        "Wood",
     ),
     (
         [
@@ -210,7 +212,7 @@ MATERIAL_GROUP_RULES = [
             "blech",
             "träger",
         ],
-        "Metall",
+        "Metal",
     ),
     (
         [
@@ -226,18 +228,18 @@ MATERIAL_GROUP_RULES = [
             "styropor",
             "wärmedämm",
         ],
-        "Dämmung",
+        "Insulation",
     ),
-    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg"], "Glas"),
+    (["glas", "glass", "verglasung", "isolierglas", "esg", "vsg"], "Glass"),
 ]
 
 MATERIAL_GROUP_COLORS = {
-    "Beton": "#2E86AB",    # Stahlblau
-    "Holz": "#E07B39",     # Warmes Orange
-    "Metall": "#7B5EA7",   # Lila
-    "Dämmung": "#6BAF92",  # Salbeigrün
-    "Glas": "#9CA3AF",     # Kühles Grau
-    "Andere": "#C9CDD3",   # Hellgrau
+    "Concrete": "#9E9E9E",
+    "Wood": "#8D6E63",
+    "Metal": "#78909C",
+    "Insulation": "#FFD54F",
+    "Glass": "#4FC3F7",
+    "Other": "#BDBDBD",
 }
 
 HOLZ_TRIGGERS = [
@@ -276,3 +278,26 @@ RAUM_GRUPPEN = {
     "Treppenhaus": ("Verkehr", "#5C8A6E"),
     "Vorraum": ("Verkehr", "#5C8A6E"),
 }
+
+SIA_416_MAP = {
+    # HNF - Hauptnutzfläche
+    "office": "HNF", "büro": "HNF", "besprechung": "HNF", "meeting": "HNF",
+    "wohnen": "HNF", "schlafen": "HNF", "wohn": "HNF", "bedroom": "HNF",
+    "küche": "HNF", "kitchen": "HNF", "dining": "HNF", "essen": "HNF",
+    "saal": "HNF", "hall": "HNF", "auditorium": "HNF", "seminar": "HNF",
+    "labor": "HNF", "lab": "HNF", "werkstatt": "HNF", "shop": "HNF",
+    # NNF - Nebennutzfläche
+    "lager": "NNF", "storage": "NNF", "archiv": "NNF", "archive": "NNF",
+    "keller": "NNF", "cellar": "NNF", "abstellraum": "NNF",
+    # VF - Verkehrsfläche
+    "korridor": "VF", "corridor": "VF", "flur": "VF", "gang": "VF",
+    "treppe": "VF", "stair": "VF", "lift": "VF", "elevator": "VF",
+    "lobby": "VF", "foyer": "VF", "eingang": "VF", "entrance": "VF",
+    # FF - Funktionsfläche
+    "wc": "FF", "toilet": "FF", "bad": "FF", "bathroom": "FF",
+    "dusche": "FF", "shower": "FF", "sanitär": "FF",
+    "technik": "FF", "technical": "FF", "haustechnik": "FF", "heizung": "FF",
+    # KF - Konstruktionsfläche
+    "konstruktion": "KF", "construction": "KF",
+}
+SIA_416_DEFAULT = "NNF"  # fallback group

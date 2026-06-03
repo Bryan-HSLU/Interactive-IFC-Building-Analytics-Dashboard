@@ -3,24 +3,55 @@ import numpy as np
 from src.constants import ERROR_SEVERITY_THRESHOLDS
 
 
+def _check_zero_volume(df):
+    """Elements with zero or negative volume."""
+    col = "volume_m3"
+    if col not in df.columns:
+        return []
+    bad = df[df[col] <= 0]
+    return [{"element_id": r.get("element_id",""), "error_type": "zero_volume",
+              "severity": "critical", "description": f"Volume ≤ 0: {r.get(col,0):.3f} m³"}
+            for _, r in bad.iterrows()]
+
+def _check_duplicate_guids(df):
+    """Duplicate element GUIDs."""
+    col = "element_id"
+    if col not in df.columns:
+        return []
+    dupes = df[df.duplicated(col, keep=False)]
+    return [{"element_id": r.get(col,""), "error_type": "duplicate_guid",
+              "severity": "critical", "description": "Duplicate element GUID"}
+            for _, r in dupes.iterrows()]
+
+def _check_orphaned_elements(df):
+    """Elements without storey assignment."""
+    col = "storey"
+    if col not in df.columns:
+        return []
+    orphans = df[df[col].isna() | (df[col] == "")]
+    return [{"element_id": r.get("element_id",""), "error_type": "orphaned_element",
+              "severity": "warning", "description": "No storey assignment"}
+            for _, r in orphans.iterrows()]
+
+
 def check_quality(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
     errors = []
 
     if element_df is not None and not element_df.empty:
         for _, row in element_df.iterrows():
             eid = row.get("element_id", "?")
-            ifc_class = row.get("ifc_class", "Unbekannt")
-            storey = row.get("storey", "Nicht zugeordnet")
+            ifc_class = row.get("ifc_class", "Unknown")
+            storey = row.get("storey", "Unassigned")
 
-            if row.get("material", "Unbekannt") in ("Unbekannt", None, ""):
+            if row.get("material", "Unknown") in ("Unbekannt", "Unknown", None, ""):
                 errors.append(
                     {
                         "element_id": eid,
                         "ifc_class": ifc_class,
                         "storey": storey,
                         "error_type": "missing_material",
-                        "severity": "Warnung",
-                        "description": "Kein Material zugewiesen",
+                        "severity": "warning",
+                        "description": "No material assigned",
                     }
                 )
 
@@ -38,48 +69,53 @@ def check_quality(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
                         "ifc_class": ifc_class,
                         "storey": storey,
                         "error_type": "missing_quantity",
-                        "severity": "kritisch",
-                        "description": "Keine Mengenangaben (Fläche/Volumen/Länge)",
+                        "severity": "critical",
+                        "description": "No quantity data (area/volume/length)",
                     }
                 )
 
-            if storey == "Nicht zugeordnet":
+            if storey in ("Nicht zugeordnet", "Unassigned", None, ""):
                 errors.append(
                     {
                         "element_id": eid,
                         "ifc_class": ifc_class,
                         "storey": storey,
                         "error_type": "missing_storey",
-                        "severity": "Warnung",
-                        "description": "Keinem Geschoss zugeordnet",
+                        "severity": "warning",
+                        "description": "Not assigned to any storey",
                     }
                 )
 
             if mode == "umbau":
-                status = row.get("status", "Nicht gefunden")
-                if status in ("Nicht gefunden", None, ""):
+                status = row.get("status", "Not found")
+                if status in ("Nicht gefunden", "Not found", None, ""):
                     errors.append(
                         {
                             "element_id": eid,
                             "ifc_class": ifc_class,
                             "storey": storey,
                             "error_type": "missing_status",
-                            "severity": "kritisch",
-                            "description": "Kein Umbau-Status gefunden",
+                            "severity": "critical",
+                            "description": "No renovation status found",
                         }
                     )
 
+        # New checks
+        errors.extend(_check_zero_volume(element_df))
+        errors.extend(_check_duplicate_guids(element_df))
+        errors.extend(_check_orphaned_elements(element_df))
+
     if space_df is not None and not space_df.empty:
         for _, row in space_df.iterrows():
-            if row.get("usage", "Unbekannt") in ("Unbekannt", None, ""):
+            if row.get("usage", "Unknown") in ("Unbekannt", "Unknown", None, ""):
                 errors.append(
                     {
                         "element_id": row.get("space_id", "?"),
                         "ifc_class": "IfcSpace",
-                        "storey": row.get("storey", "Nicht zugeordnet"),
+                        "storey": row.get("storey", "Unassigned"),
                         "error_type": "missing_usage",
-                        "severity": "Warnung",
-                        "description": "Kein Nutzungstyp zugewiesen",
+                        "severity": "warning",
+                        "description": "No usage type assigned",
                     }
                 )
 
@@ -104,6 +140,9 @@ def check_quality(element_df: pd.DataFrame, space_df: pd.DataFrame, mode: str):
         "missing_storey": 0,
         "missing_usage": 0,
         "missing_status": 0,
+        "zero_volume": 0,
+        "duplicate_guid": 0,
+        "orphaned_element": 0,
     }
     if not error_df.empty:
         for etype in error_counts:
@@ -127,7 +166,7 @@ def build_pset_matrix(element_df: pd.DataFrame) -> pd.DataFrame:
 
     rows = []
     for _, row in element_df.iterrows():
-        ifc_class = row.get("ifc_class", "Unbekannt")
+        ifc_class = row.get("ifc_class", "Unknown")
         psets = row.get("psets", {})
         if isinstance(psets, dict):
             for pset_name in psets:
@@ -147,13 +186,17 @@ def calculate_quality_score(summary: dict) -> float:
         return 100.0
 
     error_counts = summary.get("error_counts", {})
-    critical_errors = error_counts.get("missing_quantity", 0) + error_counts.get(
-        "missing_status", 0
+    critical_errors = (
+        error_counts.get("missing_quantity", 0)
+        + error_counts.get("missing_status", 0)
+        + error_counts.get("zero_volume", 0)
+        + error_counts.get("duplicate_guid", 0)
     )
     warning_errors = (
         error_counts.get("missing_material", 0)
         + error_counts.get("missing_storey", 0)
         + error_counts.get("missing_usage", 0)
+        + error_counts.get("orphaned_element", 0)
     )
 
     penalty = (critical_errors * 2 + warning_errors * 1) / (total * 3)

@@ -11,7 +11,7 @@ from src.chart_factory import (
     _classify_material_group,
 )
 from src.ui_helpers import apply_unit_conversion, unit_caption
-from src.constants import COLORS, IFC_CLASS_LABELS
+from src.constants import COLORS, CATEGORICAL_COLORS, IFC_CLASS_LABELS
 
 init_session_state()
 
@@ -46,9 +46,9 @@ _u_mass = st.session_state.get("unit_mass", "kg")
 with st.expander("ℹ️ What does this page show?", expanded=False):
     st.markdown("""
     This page provides a **quantitative overview of all components and materials** in the model:
-    - **Quantities by Material Group**: Which materials are used — and how much (m³)?
-    - **Material Share per Component Group**: Composition of wall, ceiling, floor etc. in a 100% comparison.
-    - **Volume by Element Type**: Bar chart of total volume per IFC class.
+    - **Quantities by Material Group**: Which materials are used — and how much (m³)? Use the slider to filter small groups.
+    - **Material Volume per Component Group**: Absolute volume (m³) per material in each component category.
+    - **Components per Storey**: How many elements of each IFC type per storey?
     - **Volume Matrix (Storey × Material)**: Heatmap showing where materials are concentrated by storey.
     - **Material Flow (Sankey)**: Flow diagram from material group to element type by volume.
     - **Element Quantity List**: Complete, searchable component list with area, volume and length.
@@ -79,10 +79,10 @@ if cf_usage:
 # Keep an unfiltered-by-material copy for the volume bar chart
 element_df_all = element_df.copy()
 
-# Compute the top 5 grouped materials dynamically
+# Compute top materials for "Other" filter logic
 top_mats = []
 if not element_df_all.empty and "grouped_material" in element_df_all.columns:
-    vol_col = "volume_m3" if _u_volume in ("m³", "m³") else "area_m2"
+    vol_col = "volume_m3"
     if vol_col in element_df_all.columns:
         df_valid = element_df_all.dropna(subset=[vol_col])
         top_mats = (
@@ -149,9 +149,33 @@ st.divider()
 
 # -- Chart A: Quantities by Material Group -------------------------------------
 st.subheader("📦 Quantities by Material Group")
-st.caption("🖱️ Click a bar to filter by this material. Use the reset button above to clear.")
+st.caption("🖱️ Click a bar to filter by this material. Use the slider to hide small groups.")
+
+# Compute max volume for slider
+_max_vol = 0.0
+if "volume_m3" in element_df_all.columns and not element_df_all.empty:
+    _agg_check = element_df_all.dropna(subset=["volume_m3"])
+    _agg_check["volume_m3"] = pd.to_numeric(_agg_check["volume_m3"], errors="coerce")
+    if not _agg_check.empty:
+        _grouped = _agg_check.groupby(
+            _agg_check["grouped_material"] if "grouped_material" in _agg_check.columns
+            else _agg_check["material"].apply(_classify_material_group)
+        )["volume_m3"].sum()
+        _max_vol = float(_grouped.max()) if not _grouped.empty else 0.0
+
+min_vol_threshold = 0.0
+if _max_vol > 0:
+    min_vol_threshold = st.slider(
+        "Minimum volume threshold (m³) — hide groups below this value",
+        min_value=0.0,
+        max_value=float(_max_vol * 0.5),
+        value=0.0,
+        step=max(0.1, float(_max_vol * 0.01)),
+        format="%.1f",
+    )
+
 unit = st.session_state.get("unit_volume", "m³")
-fig_mat = create_material_volume_bar(element_df_all, unit)
+fig_mat = create_material_volume_bar(element_df_all, unit, min_volume=min_vol_threshold)
 fig_mat.update_layout(height=500)
 
 ev_mat = st.plotly_chart(
@@ -167,9 +191,9 @@ if ev_mat and ev_mat.selection and ev_mat.selection.points:
 
 st.divider()
 
-# -- Chart B: Material Share per Component Group -------------------------------
-st.subheader("🏗️ Material Share per Component Group")
-st.caption("📊 100% Stacked Bar Chart for comparative composition (Ceiling, Floor, Wall, etc.).")
+# -- Chart B: Material Volume per Component Group ------------------------------
+st.subheader("🏗️ Material Volume per Component Group")
+st.caption("📊 Absolute volume (m³) per material group per component category. Toggle materials via the legend.")
 fig_stacked = create_element_material_stacked_bar(element_df)
 fig_stacked.update_layout(
     height=500,
@@ -187,39 +211,42 @@ st.plotly_chart(fig_stacked, use_container_width=True, key="p4_stacked_bar")
 
 st.divider()
 
-# -- Chart C: Volume by Element Type ------------------------------------------
-st.subheader("📊 Volume by Element Type")
-st.caption("Total volume per IFC class — shows which element types dominate by volume.")
+# -- Chart C: Components per Storey --------------------------------------------
+st.subheader("🏢 Components per Storey")
+st.caption("Number of elements per IFC class per storey — shows how composition changes across floors.")
 
-if "ifc_class" in element_df.columns and "volume_m3" in element_df.columns:
-    vol_by_class = element_df.groupby("ifc_class")["volume_m3"].sum().reset_index()
-    vol_by_class["vol"] = pd.to_numeric(vol_by_class["volume_m3"], errors="coerce").fillna(0)
-    vol_by_class = vol_by_class[vol_by_class["vol"] > 0].sort_values("vol", ascending=True)
-    vol_by_class["label"] = vol_by_class["ifc_class"].map(IFC_CLASS_LABELS).fillna(vol_by_class["ifc_class"])
+if "ifc_class" in element_df.columns and "storey" in element_df.columns:
+    storey_class = element_df.groupby(["storey", "ifc_class"]).size().reset_index(name="count")
+    storeys = sorted(storey_class["storey"].unique())
+    classes = storey_class.groupby("ifc_class")["count"].sum().sort_values(ascending=False).index.tolist()
 
-    fig_vol_type = go.Figure(go.Bar(
-        x=vol_by_class["vol"],
-        y=vol_by_class["label"],
-        orientation="h",
-        marker_color=COLORS["primary"],
-        text=[f"{v:,.1f}".replace(",", "'") for v in vol_by_class["vol"]],
-        textposition="outside",
-        cliponaxis=False,
-        hovertemplate="<b>%{y}</b><br>Volume: %{x:,.1f} m³<extra></extra>",
-    ))
-    fig_vol_type.update_layout(
+    _palette = CATEGORICAL_COLORS * (len(classes) // len(CATEGORICAL_COLORS) + 1)
+    fig_comp_storey = go.Figure()
+    for i, cls in enumerate(classes):
+        sub = storey_class[storey_class["ifc_class"] == cls]
+        cls_counts = {row["storey"]: row["count"] for _, row in sub.iterrows()}
+        label = IFC_CLASS_LABELS.get(cls, cls)
+        fig_comp_storey.add_trace(go.Bar(
+            name=label,
+            x=storeys,
+            y=[cls_counts.get(s, 0) for s in storeys],
+            marker_color=_palette[i],
+            hovertemplate=f"<b>{label}</b><br>Storey: %{{x}}<br>Count: %{{y}}<extra></extra>",
+        ))
+    fig_comp_storey.update_layout(
         template="plotly_white",
-        xaxis_title="Volume (m³)",
-        yaxis_title="",
-        showlegend=False,
-        margin=dict(l=10, r=60, t=20, b=30),
-        height=max(260, len(vol_by_class) * 32),
+        barmode="stack",
+        xaxis_title="Storey",
+        yaxis_title="Number of Elements",
+        margin=dict(l=40, r=20, t=30, b=60),
+        height=380,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", y=-0.3, xanchor="center", x=0.5, font=dict(size=10)),
     )
-    st.plotly_chart(fig_vol_type, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_comp_storey, use_container_width=True, config={"displayModeBar": False})
 else:
-    st.info("No volume or class data available.")
+    st.info("No storey or class data available.")
 
 st.divider()
 

@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from src.state_manager import init_session_state, get_element_df, get_space_df
 from src.filters import render_sidebar, render_cross_filter_reset
-from src.constants import COLORS, SIA_416_MAP, SIA_416_DEFAULT
+from src.constants import COLORS, SIA_416_MAP, SIA_416_DEFAULT, SIA_COLORS
 
 init_session_state()
 
@@ -36,11 +36,11 @@ with st.expander("ℹ️ What does this page show?", expanded=False):
     st.markdown("""
     This page analyses the **rooms and areas** of the building based on IfcSpace elements:
     - **SIA-416 Area Distribution**: Total area per SIA-416 category (HNF, NNF, VF, FF, KF).
-    - **Room Size Distribution**: Histogram of individual room areas.
-    - **Rooms per Storey**: Stacked bar showing room counts by usage type per storey.
+    - **Top 10 Rooms by Area**: Which individual rooms dominate the floor plan, colored by SIA group.
+    - **Rooms per Storey**: Stacked bar showing room counts by SIA-416 group per storey.
     - **HNF/NF Ratio**: Key metric for primary use area proportion.
+    - **Average Room Height per SIA Group**: How tall are rooms in each category on average.
     - **Room Table**: Searchable overview with area, volume and height.
-    - **Height Distribution**: Distribution of room heights (if available).
 
     **IfcSpace** = room object in the IFC model (exported by ArchiCAD/Revit when rooms are modelled).
     """)
@@ -95,8 +95,6 @@ st.caption("Total area per SIA-416 category — HNF (primary use), NNF (secondar
 sia_agg = space_df.groupby("sia_group")["area_m2"].sum().reset_index()
 sia_agg = sia_agg[sia_agg["area_m2"] > 0].sort_values("area_m2", ascending=False)
 
-SIA_COLORS = {"HNF": "#2E86AB", "NNF": "#8D6E63", "VF": "#5C8A6E", "FF": "#7B5EA7", "KF": "#C44536"}
-
 if not sia_agg.empty:
     fig_sia = go.Figure(go.Bar(
         x=sia_agg["sia_group"],
@@ -122,55 +120,64 @@ else:
 
 st.divider()
 
-# ── Room Size Distribution ────────────────────────────────────────────────────
-st.subheader("📐 Room Size Distribution")
-st.caption("Histogram of individual room areas (m²).")
+# ── Top 10 Rooms by Area ───────────────────────────────────────────────────────
+st.subheader("🏆 Top 10 Rooms by Area")
+st.caption("Largest rooms in the building, colored by SIA-416 group.")
 
-valid_areas = space_df["area_m2"].dropna()
-valid_areas = valid_areas[valid_areas > 0]
+valid_rooms = space_df.dropna(subset=["area_m2"])
+valid_rooms = valid_rooms[valid_rooms["area_m2"] > 0]
 
-if not valid_areas.empty:
-    fig_hist = go.Figure(go.Histogram(
-        x=valid_areas,
-        nbinsx=20,
-        marker_color=COLORS["primary"],
-        opacity=0.8,
-        hovertemplate="Area: %{x:.1f} m²<br>Count: %{y}<extra></extra>",
+if not valid_rooms.empty:
+    top10 = valid_rooms.nlargest(10, "area_m2").sort_values("area_m2", ascending=True)
+    # Build room label
+    name_col = "name" if "name" in top10.columns else "usage"
+    top10["_label"] = top10[name_col].astype(str) + " (" + top10["sia_group"] + ")"
+
+    fig_top10 = go.Figure(go.Bar(
+        x=top10["area_m2"],
+        y=top10["_label"],
+        orientation="h",
+        marker_color=[SIA_COLORS.get(g, "#CCCCCC") for g in top10["sia_group"]],
+        text=[f"{v:,.1f} m²".replace(",", "'") for v in top10["area_m2"]],
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate="<b>%{y}</b><br>Area: %{x:,.1f} m²<extra></extra>",
     ))
-    fig_hist.update_layout(
+    fig_top10.update_layout(
         template="plotly_white",
-        xaxis_title="Room Area (m²)",
-        yaxis_title="Number of Rooms",
+        xaxis_title="Area (m²)",
+        yaxis_title="",
         showlegend=False,
-        margin=dict(l=40, r=20, t=30, b=40),
-        height=300,
+        margin=dict(l=10, r=80, t=20, b=40),
+        height=max(280, len(top10) * 36),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_hist, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_top10, use_container_width=True, config={"displayModeBar": False})
 else:
     st.info("No valid room areas available.")
 
 st.divider()
 
-# ── Rooms per Storey ──────────────────────────────────────────────────────────
+# ── Rooms per Storey (grouped by SIA) ────────────────────────────────────────
 if "storey" in space_df.columns:
     st.subheader("🏢 Rooms per Storey")
-    st.caption("Number of rooms per storey, broken down by usage type.")
+    st.caption("Number of rooms per storey, broken down by SIA-416 group.")
 
-    storey_usage = space_df.groupby(["storey", "usage"]).size().reset_index(name="count")
-    storeys = sorted(storey_usage["storey"].unique())
-    usages = sorted(storey_usage["usage"].unique())
+    storey_sia = space_df.groupby(["storey", "sia_group"]).size().reset_index(name="count")
+    storeys = sorted(storey_sia["storey"].unique())
+    sia_groups = sorted(storey_sia["sia_group"].unique())
 
     fig_storey = go.Figure()
-    for usage in usages:
-        sub = storey_usage[storey_usage["usage"] == usage]
-        storey_counts = {row["storey"]: row["count"] for _, row in sub.iterrows()}
+    for grp in sia_groups:
+        sub = storey_sia[storey_sia["sia_group"] == grp]
+        grp_counts = {row["storey"]: row["count"] for _, row in sub.iterrows()}
         fig_storey.add_trace(go.Bar(
-            name=usage,
+            name=grp,
             x=storeys,
-            y=[storey_counts.get(s, 0) for s in storeys],
-            hovertemplate=f"<b>{usage}</b><br>Storey: %{{x}}<br>Count: %{{y}}<extra></extra>",
+            y=[grp_counts.get(s, 0) for s in storeys],
+            marker_color=SIA_COLORS.get(grp, "#CCCCCC"),
+            hovertemplate=f"<b>{grp}</b><br>Storey: %{{x}}<br>Count: %{{y}}<extra></extra>",
         ))
     fig_storey.update_layout(
         template="plotly_white",
@@ -184,6 +191,39 @@ if "storey" in space_df.columns:
         legend=dict(orientation="h", y=-0.25, xanchor="center", x=0.5),
     )
     st.plotly_chart(fig_storey, use_container_width=True, config={"displayModeBar": False})
+    st.divider()
+
+# ── Average Room Height per SIA Group ────────────────────────────────────────
+if "height_m" in space_df.columns:
+    st.subheader("📏 Average Room Height per SIA-416 Group")
+    st.caption("Average ceiling height in meters per SIA-416 category.")
+    _hdf = space_df.copy()
+    _hdf["height_m"] = pd.to_numeric(_hdf["height_m"], errors="coerce")
+    avg_height = _hdf.groupby("sia_group")["height_m"].mean().reset_index()
+    avg_height = avg_height[avg_height["height_m"] > 0].sort_values("height_m", ascending=True)
+
+    if not avg_height.empty:
+        fig_h = go.Figure(go.Bar(
+            x=avg_height["height_m"],
+            y=avg_height["sia_group"],
+            orientation="h",
+            marker_color=[SIA_COLORS.get(g, "#CCCCCC") for g in avg_height["sia_group"]],
+            text=[f"{v:.2f} m" for v in avg_height["height_m"]],
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate="<b>%{y}</b><br>Avg Height: %{x:.2f} m<extra></extra>",
+        ))
+        fig_h.update_layout(
+            template="plotly_white",
+            xaxis_title="Average Height (m)",
+            yaxis_title="",
+            showlegend=False,
+            margin=dict(l=10, r=60, t=20, b=30),
+            height=max(200, len(avg_height) * 40),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_h, use_container_width=True, config={"displayModeBar": False})
     st.divider()
 
 # ── Room Table ────────────────────────────────────────────────────────────────
@@ -222,30 +262,3 @@ for num_col in ["Area (m²)", "Volume (m³)", "Height (m)"]:
 
 st.caption(f"🏠 {len(display_df):,} rooms shown".replace(",", "'"))
 st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-# ── Height Distribution ───────────────────────────────────────────────────────
-if "height_m" in space_df.columns:
-    st.divider()
-    st.subheader("📏 Height Distribution")
-    st.caption("Distribution of room heights (m).")
-    valid_heights = pd.to_numeric(space_df["height_m"], errors="coerce").dropna()
-    valid_heights = valid_heights[valid_heights > 0]
-    if not valid_heights.empty:
-        fig_hh = go.Figure(go.Histogram(
-            x=valid_heights,
-            nbinsx=15,
-            marker_color=COLORS.get("neutral", "#B8BFC7"),
-            opacity=0.8,
-            hovertemplate="Height: %{x:.2f} m<br>Count: %{y}<extra></extra>",
-        ))
-        fig_hh.update_layout(
-            template="plotly_white",
-            xaxis_title="Room Height (m)",
-            yaxis_title="Number of Rooms",
-            showlegend=False,
-            margin=dict(l=40, r=20, t=30, b=40),
-            height=280,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_hh, use_container_width=True, config={"displayModeBar": False})

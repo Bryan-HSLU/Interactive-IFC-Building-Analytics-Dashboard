@@ -16,6 +16,7 @@ from src.constants import (
     RAUM_GRUPPEN,
     SIA_416_MAP,
     SIA_416_DEFAULT,
+    SIA_COLORS,
     IFC_CLASS_LABELS,
 )
 
@@ -164,9 +165,15 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
         if id_ == "root":
             colors.append(_get_room_color("total"))
         elif id_.startswith("sia::"):
-            colors.append(_get_room_color(lbl))
+            colors.append(SIA_COLORS.get(lbl, _get_room_color(lbl)))
         else:
-            colors.append(_get_room_color(lbl))
+            # Use the SIA color of the parent group for consistency
+            sia_group = None
+            for _, row in agg.iterrows():
+                if row["usage"] == lbl:
+                    sia_group = row["sia_group"]
+                    break
+            colors.append(SIA_COLORS.get(sia_group, _get_room_color(lbl)) if sia_group else _get_room_color(lbl))
 
     fig = go.Figure(
         go.Treemap(
@@ -191,9 +198,9 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
 # ── Horizontal Bar Chart: "Welche Materialien sind verbaut?" ────────────────
 
 
-def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> go.Figure:
+def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³", min_volume: float = 0.0) -> go.Figure:
     if element_df.empty:
-        return _empty_fig("Keine Elementdaten verfügbar")
+        return _empty_fig("No element data available")
 
     col = "volume_m3" if unit in ("m³", "m\u00b3") else "area_m2"
     df = element_df.dropna(subset=[col]).copy()
@@ -201,21 +208,18 @@ def create_material_volume_bar(element_df: pd.DataFrame, unit: str = "m³") -> g
     df = df[df[col] > 0]
 
     if df.empty:
-        return _empty_fig("Keine Mengendaten verfügbar")
+        return _empty_fig("No quantity data available")
 
     df["grouped_material"] = df["material"].apply(_classify_material_group)
     agg = df.groupby("grouped_material")[col].sum().reset_index()
     agg.columns = ["material", "quantity"]
     total_volume = agg["quantity"].sum()
 
-    is_andere = agg["material"] == "Other"
-    andere_row = agg[is_andere]
-    main_rows = agg[~is_andere].sort_values("quantity", ascending=True)
+    if min_volume > 0:
+        agg = agg[agg["quantity"] >= min_volume]
 
-    if not andere_row.empty:
-        agg = pd.concat([andere_row, main_rows], ignore_index=True)
-    else:
-        agg = main_rows
+    agg = agg.sort_values("quantity", ascending=True)
+    main_rows = agg
 
     colors = [_MATERIAL_GROUP_COLORS.get(m, "#BDC3C7") for m in agg["material"]]
 
@@ -643,35 +647,38 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
         df["part"] = df.apply(_map_class_to_part, axis=1)
 
         if df.empty:
-            pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
+            pivot_vol = pd.DataFrame(0.0, index=part_order, columns=group_order)
         else:
             df["mat_group"] = df["material"].apply(_classify_material_group)
-            pivot = df.pivot_table(
-                index="part", columns="mat_group", aggfunc="size", fill_value=0
-            )
-            pivot = pivot.reindex(index=part_order, columns=group_order, fill_value=0)
-            row_sums = pivot.sum(axis=1)
-            pivot_pct = pivot.div(row_sums.replace(0, 1), axis=0) * 100
-            pivot_pct.loc[row_sums == 0] = 0.0
+            if "volume_m3" in df.columns:
+                df["volume_m3"] = pd.to_numeric(df["volume_m3"], errors="coerce").fillna(0)
+                pivot_vol = df.pivot_table(
+                    index="part", columns="mat_group", values="volume_m3", aggfunc="sum", fill_value=0
+                )
+            else:
+                pivot_vol = df.pivot_table(
+                    index="part", columns="mat_group", aggfunc="size", fill_value=0
+                ).astype(float)
+            pivot_vol = pivot_vol.reindex(index=part_order, columns=group_order, fill_value=0)
 
     fig = go.Figure()
     for grp in group_order:
         color = _MATERIAL_GROUP_COLORS.get(grp, "#BDBDBD")
         fig.add_trace(
             go.Bar(
-                x=pivot_pct.index,
-                y=pivot_pct[grp],
+                x=pivot_vol.index,
+                y=pivot_vol[grp],
                 name=grp,
                 marker_color=color,
-                hovertemplate=f"<b>%{{x}}</b><br>{grp}: %{{y:.1f}}%<extra></extra>",
+                hovertemplate=f"<b>%{{x}}</b><br>{grp}: %{{y:.1f}} m³<extra></extra>",
             )
         )
 
     fig.update_layout(barmode="stack")
-    apply_default_layout(fig, "Material Share per Component Group")
+    apply_default_layout(fig, "Material Volume per Component Group")
     fig.update_layout(
         title=dict(
-            text="Material Share per Component Group",
+            text="Material Volume per Component Group",
             font=dict(size=14, color=COLORS["text"]),
             x=0.0,
             y=0.98,
@@ -679,7 +686,7 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
             xanchor="left",
         ),
         xaxis_title="",
-        yaxis_title="Material Share (%)",
+        yaxis_title="Volume (m³)",
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -1383,28 +1390,40 @@ def create_ifc_class_bar(element_df: pd.DataFrame) -> go.Figure:
 
 def create_material_flow_sankey(element_df):
     """Sankey: material group → element type → volume (flow encoding)."""
+    if element_df is None or element_df.empty:
+        return _empty_fig("No element data for Sankey")
+
     df = element_df.copy()
     df["mat_group"] = df["material"].apply(_classify_material_group)
     df["elem_type"] = df["ifc_class"].map(IFC_CLASS_LABELS).fillna("Other")
 
-    if "volume_m3" not in df.columns:
-        return _empty_fig("No volume data for Sankey")
+    # Replace empty/null labels
+    df["mat_group"] = df["mat_group"].apply(lambda x: x if str(x).strip() else "Unknown")
+    df["elem_type"] = df["elem_type"].apply(lambda x: x if str(x).strip() else "Unknown")
 
+    if "volume_m3" not in df.columns:
+        return _empty_fig("No volume data for Sankey diagram")
+
+    df["volume_m3"] = pd.to_numeric(df["volume_m3"], errors="coerce").fillna(0)
     agg = df.groupby(["mat_group", "elem_type"])["volume_m3"].sum().reset_index()
     agg = agg[agg["volume_m3"] > 0]
 
     if agg.empty:
-        return _empty_fig("No volume data after aggregation")
+        return _empty_fig("No volume data available for Sankey diagram")
 
     mat_groups = sorted(agg["mat_group"].unique().tolist())
     elem_types = sorted(agg["elem_type"].unique().tolist())
 
+    # Guard: need at least one source and one target
+    if not mat_groups or not elem_types:
+        return _empty_fig("Insufficient data for Sankey diagram")
+
     nodes = mat_groups + elem_types
     node_idx = {n: i for i, n in enumerate(nodes)}
 
-    source = [node_idx[r["mat_group"]] for _, r in agg.iterrows()]
-    target = [node_idx[r["elem_type"]] for _, r in agg.iterrows()]
-    value = agg["volume_m3"].tolist()
+    source = [int(node_idx[r["mat_group"]]) for _, r in agg.iterrows()]
+    target = [int(node_idx[r["elem_type"]]) for _, r in agg.iterrows()]
+    value = [float(v) for v in agg["volume_m3"].tolist()]
 
     fig = go.Figure(go.Sankey(
         node=dict(label=nodes, pad=15, thickness=20),

@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from src.state_manager import init_session_state, get_element_df, get_space_df, get_quality_data
 from src.filters import render_sidebar
 from src.chart_factory import create_room_treemap, create_ifc_class_bar, create_status_donut
-from src.constants import COLORS, CATEGORICAL_COLORS, IFC_CLASS_LABELS, SIA_COLORS, SIA_416_DESCRIPTIONS
+from src.constants import COLORS, CATEGORICAL_COLORS, IFC_CLASS_LABELS, SIA_COLORS, SIA_416_DESCRIPTIONS, STATUS_COLORS
 
 init_session_state()
 
@@ -104,41 +104,6 @@ with kcols[3]:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Volume Donut Chart ──
-if element_df is not None and "volume_m3" in element_df.columns and "ifc_class" in element_df.columns:
-    _vol_df = element_df.dropna(subset=["volume_m3"]).copy()
-    _vol_df["volume_m3"] = pd.to_numeric(_vol_df["volume_m3"], errors="coerce")
-    _vol_by_class = _vol_df[_vol_df["volume_m3"] > 0].groupby("ifc_class")["volume_m3"].sum()
-    if not _vol_by_class.empty:
-        _labels = [IFC_CLASS_LABELS.get(c, c) for c in _vol_by_class.index]
-        _colors_donut = CATEGORICAL_COLORS * (len(_labels) // len(CATEGORICAL_COLORS) + 1)
-        _fig_donut = go.Figure(go.Pie(
-            labels=_labels,
-            values=_vol_by_class.values,
-            hole=0.55,
-            marker=dict(colors=_colors_donut[:len(_labels)]),
-            textinfo="label+percent",
-            hovertemplate="<b>%{label}</b><br>Volume: %{value:,.1f} m³<br>Share: %{percent}<extra></extra>",
-        ))
-        _total_vol = _vol_by_class.sum()
-        _fig_donut.add_annotation(
-            text=f"<b>{_total_vol:,.0f}</b><br><span style='font-size:11px;'>m³ total</span>".replace(",", "'"),
-            x=0.5, y=0.5,
-            font=dict(size=18, family="Inter, sans-serif", color=COLORS["text"]),
-            showarrow=False,
-        )
-        _fig_donut.update_layout(
-            template="plotly_white",
-            showlegend=True,
-            legend=dict(orientation="h", y=-0.1, xanchor="center", x=0.5, font=dict(size=11)),
-            margin=dict(l=20, r=20, t=30, b=20),
-            height=320,
-            paper_bgcolor="rgba(0,0,0,0)",
-            title=dict(text="Volume Distribution by IFC Class (m³)", font=dict(size=13, color=COLORS["text"]), x=0.0),
-        )
-        st.plotly_chart(_fig_donut, use_container_width=True, config={"displayModeBar": False}, key="ov_vol_donut")
-        st.divider()
-
 # ── Tabs ──
 tab_modell, tab_status, tab_raeumlich = st.tabs(["🏗️ Model", "🔄 Status", "🗺️ Spatial"])
 
@@ -191,7 +156,47 @@ with tab_status:
         In new build mode all elements are classified as "Neubau".
         """)
     if element_df is not None and "status" in element_df.columns:
-        st.plotly_chart(create_status_donut(element_df), use_container_width=True, config={"displayModeBar": False})
+        _dcol1, _dcol2 = st.columns(2)
+        with _dcol1:
+            st.caption("**Element Count** by status")
+            st.plotly_chart(create_status_donut(element_df), use_container_width=True, config={"displayModeBar": False})
+        with _dcol2:
+            st.caption("**Volume (m³)** by status")
+            if "volume_m3" in element_df.columns:
+                _vdf = element_df.dropna(subset=["volume_m3", "status"]).copy()
+                _vdf["volume_m3"] = pd.to_numeric(_vdf["volume_m3"], errors="coerce").fillna(0)
+                _vol_by_status = _vdf[_vdf["volume_m3"] > 0].groupby("status")["volume_m3"].sum()
+                if not _vol_by_status.empty:
+                    _total_sv = _vol_by_status.sum()
+                    _fig_sv = go.Figure(go.Pie(
+                        labels=_vol_by_status.index.tolist(),
+                        values=_vol_by_status.values.tolist(),
+                        hole=0.58,
+                        marker=dict(colors=[STATUS_COLORS.get(s, "#C9CDD3") for s in _vol_by_status.index]),
+                        textinfo="label+percent",
+                        sort=False,
+                        hovertemplate="<b>%{label}</b><br>Volume: %{value:,.1f} m³<br>Share: %{percent}<extra></extra>",
+                    ))
+                    _fig_sv.add_annotation(
+                        text=f"<b>{_total_sv:,.0f}</b><br><span style='font-size:12px;'>m³</span>".replace(",", "'"),
+                        x=0.5, y=0.5,
+                        font=dict(size=22, family="Inter, sans-serif", color=COLORS["text"]),
+                        showarrow=False,
+                    )
+                    _fig_sv.update_layout(
+                        template="plotly_white",
+                        showlegend=True,
+                        legend=dict(orientation="h", y=-0.08, xanchor="center", x=0.5, font=dict(size=12)),
+                        margin=dict(l=20, r=20, t=20, b=40),
+                        height=340,
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(_fig_sv, use_container_width=True, config={"displayModeBar": False}, key="ov_vol_status_donut")
+                else:
+                    st.info("No volume data by status.")
+            else:
+                st.info("No volume data available.")
     else:
         st.info("No status data available — renovation mode may not be selected.")
 

@@ -111,14 +111,34 @@ if coverage < 100:
         with st.expander(f"⚠️ {100 - coverage:.0f} % of elements without KBOB assignment ({len(unmatched)} materials)", expanded=False):
             st.dataframe(pd.DataFrame(unmatched, columns=["Unassigned Materials"]), use_container_width=True, hide_index=True)
 
-# ── Material filter for Costs & Grey Energy ──
-all_mat_groups = sorted(element_df["grouped_material"].dropna().unique().tolist()) if "grouped_material" in element_df.columns else []
+# ── Global material view toggle + filter (applies to ALL tabs) ──
+_p5_mat_individual = st.radio(
+    "Material view",
+    ["Grouped (6 categories)", "Individual raw materials"],
+    index=0,
+    horizontal=True,
+    key="p5_mat_view",
+).startswith("Individual")
+
+if _p5_mat_individual:
+    _p5_group_col = "material"
+    all_mat_options = sorted(element_df["material"].dropna().unique().tolist()) if "material" in element_df.columns else []
+else:
+    _p5_group_col = "grouped_material"
+    all_mat_options = sorted(element_df["grouped_material"].dropna().unique().tolist()) if "grouped_material" in element_df.columns else []
+
 selected_mat_groups = st.multiselect(
-    "🎨 Filter by material group (applies to Costs & Grey Energy tabs)",
-    options=all_mat_groups,
-    default=all_mat_groups,
+    "🎨 Filter by material (applies to all tabs)",
+    options=all_mat_options,
+    default=all_mat_options,
     key="p5_mat_filter",
 )
+
+# Build globally filtered df
+if selected_mat_groups and _p5_group_col in element_df.columns:
+    filtered_df = element_df[element_df[_p5_group_col].isin(selected_mat_groups)]
+else:
+    filtered_df = element_df
 
 # ── Tabs ──
 tabs = st.tabs(["🌱 CO₂ Emissions", "💰 Costs", "⚡ Grey Energy", "🔄 Combined / Trade-off"])
@@ -136,7 +156,7 @@ with tab_co2:
     with col_pareto:
         st.subheader("CO₂ Drivers")
         st.caption("Which material groups cause the largest share? (descending, with cumulative line)")
-        st.plotly_chart(create_co2_pareto(element_df), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(create_co2_pareto(filtered_df, group_col=_p5_group_col), use_container_width=True, config={"displayModeBar": False})
     with col_gauge:
         st.subheader("SIA 2032 Target")
         st.caption("Actual value vs. limit of 11 kg CO₂e/m²·a")
@@ -150,7 +170,7 @@ with tab_co2:
     # CO₂ heatmap by storey
     st.subheader("CO₂ by Storey and Material")
     st.caption("Heatmap: where are CO₂-intensive materials concentrated by storey?")
-    st.plotly_chart(create_storey_material_heatmap(element_df, value_col="co2e_total", title="CO₂ by Storey and Material (kg)"), use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(create_storey_material_heatmap(filtered_df, value_col="co2e_total", title="CO₂ by Storey and Material (kg)"), use_container_width=True, config={"displayModeBar": False})
 
     # Room CO₂ scatter (if space data available)
     if space_df is not None and not space_df.empty and "area_m2" in space_df.columns and "co2_load" in space_df.columns:
@@ -167,17 +187,13 @@ with tab_costs:
         the component volume. These are indicative values for the early design phase — not binding cost estimates.
         """)
 
-    # Apply material filter
-    if selected_mat_groups and "grouped_material" in element_df.columns:
-        cost_df = element_df[element_df["grouped_material"].isin(selected_mat_groups)]
-    else:
-        cost_df = element_df
+    cost_df = filtered_df
 
     col_cb, col_sc = st.columns([1, 2])
     with col_cb:
         st.subheader("Costs by Material")
         st.caption("Total costs per material group (KBOB reference values, CHF)")
-        st.plotly_chart(create_cost_breakdown_bar(cost_df), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(create_cost_breakdown_bar(cost_df, group_col=_p5_group_col), use_container_width=True, config={"displayModeBar": False})
     with col_sc:
         st.subheader("Cost vs. Volume")
         st.caption("Which component groups are cost-intensive relative to their volume? (dot size = element count)")
@@ -262,11 +278,7 @@ with tab_energy:
     _ge_series = pd.to_numeric(element_df.get("grey_energy_kwh", pd.Series(dtype=float)), errors="coerce")
     _ge_has_data = _ge_series.notna().any() and _ge_series.sum() > 0
     if _ge_has_data:
-        # Apply material filter
-        if selected_mat_groups and "grouped_material" in element_df.columns:
-            ge_df = element_df[element_df["grouped_material"].isin(selected_mat_groups)]
-        else:
-            ge_df = element_df
+        ge_df = filtered_df
 
         with st.expander("ℹ️ What is grey energy?", expanded=False):
             st.markdown("""
@@ -285,7 +297,7 @@ with tab_energy:
         with col_ge_bar:
             _df_ge = ge_df.dropna(subset=["grey_energy_kwh"]).copy()
             _df_ge["ge_num"] = pd.to_numeric(_df_ge["grey_energy_kwh"], errors="coerce").fillna(0)
-            _df_ge["mat_group"] = _df_ge["grouped_material"] if "grouped_material" in _df_ge.columns else _df_ge["material"].apply(_classify_material_group)
+            _df_ge["mat_group"] = _df_ge[_p5_group_col] if _p5_group_col in _df_ge.columns else _df_ge["material"].apply(_classify_material_group)
             _agg_ge = _df_ge.groupby("mat_group")["ge_num"].sum().reset_index()
             _agg_ge.columns = ["Material Group", "kWh"]
             _agg_ge = _agg_ge[_agg_ge["kWh"] > 0].sort_values("kWh", ascending=True)
@@ -398,11 +410,11 @@ with tab_combined:
         st.divider()
         st.subheader("CO₂ Balance by Material Group")
         st.caption("Diverging bar: new emissions (Neubau) vs. savings from retained elements (Bestand) per material group.")
-        st.plotly_chart(create_co2_diverging_bar(element_df), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(create_co2_diverging_bar(filtered_df), use_container_width=True, config={"displayModeBar": False})
     else:
         st.subheader("Cost vs. CO₂ Trade-off")
         st.caption("Bubble chart: trade-off between cost and CO₂ intensity per material group (size = volume).")
-        st.plotly_chart(create_cost_co2_scatter(element_df), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(create_cost_co2_scatter(filtered_df), use_container_width=True, config={"displayModeBar": False})
         st.info("Switch to **Renovation mode** on Page 1 to see the CO₂ diverging bar and renovation balance.")
 
 # ── Data Tab ──

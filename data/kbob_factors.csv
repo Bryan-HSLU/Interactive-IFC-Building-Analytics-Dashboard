@@ -1,37 +1,37 @@
-material_key,material_label_de,co2e_kg_per_m3,grey_energy_kwh_per_m3,cost_chf_per_m3,density_kg_per_m3
-concrete,Beton,200,350,250,2400
-reinforced_concrete,Stahlbeton,300,500,400,2500
-steel,Stahl,1500,5000,3000,7850
-wood_softwood,"Holz (Nadelholz)",25,80,180,500
-wood_hardwood,"Holz (Laubholz)",30,100,350,700
-brick,Backstein,150,300,200,1800
-glass,Glas,800,2500,600,2500
-insulation_eps,"Dämmung EPS",80,250,120,30
-insulation_mineral,"Dämmung Mineralwolle",40,150,100,100
-insulation_pur,"Dämmung PUR",120,400,200,35
-gypsum,Gips,50,120,80,1200
-gypsum_board,Gipskarton,60,140,90,900
-aluminum,Aluminium,8000,30000,5000,2700
-copper,Kupfer,4000,15000,8000,8900
-pvc,PVC,3000,10000,400,1400
-ceramic,Keramik,200,400,300,2000
-ceramic_tile,Keramikfliesen,250,500,350,2300
-mortar,"Mörtel",100,200,150,1800
-bitumen,Bitumen,500,1500,200,1050
-natural_stone,Naturstein,60,100,500,2600
-limestone,Kalkstein,80,130,300,2400
-sandstone,Sandstein,70,120,400,2200
-zinc,Zink,3500,12000,4000,7100
-lead,Blei,2000,8000,3000,11340
-plaster,Verputz,90,180,120,1600
-linoleum,Linoleum,150,400,100,1200
-rubber,Gummi,2500,8000,300,1500
-polyethylene,Polyethylen,2000,7000,350,950
-fibre_cement,Faserzement,300,600,250,1800
-mineral_fibre,Mineralfaser,45,160,110,120
-cork,Kork,20,60,250,200
-straw,Stroh,5,15,50,100
-clay,Lehm,10,30,80,1600
-concrete_lightweight,Leichtbeton,120,250,200,1800
-precast_concrete,Betonfertigteil,280,480,350,2400
-unknown,Unbekannt,,,,
+material_key,material_label_de,co2e_kg_per_m3,grey_energy_kwh_per_m3,cost_chf_per_m3,density_kg_per_m3,thg_kg_co2e_per_kg,primary_energy_kwh_per_kg
+concrete,Beton,230.0,690.0,220,2300,0.1,0.3
+reinforced_concrete,Stahlbeton,312.0,1320.0,380,2400,0.13,0.55
+concrete_lightweight,Leichtbeton,196.0,630.0,260,1400,0.14,0.45
+precast_concrete,Betonfertigteil,384.0,1560.0,420,2400,0.16,0.65
+steel,Stahl (Profil/Bewehrung),5809.0,50240.0,2800,7850,0.74,6.4
+aluminum,Aluminium,15120.0,113400.0,6500,2700,5.6,42.0
+copper,Kupfer,30260.0,124600.0,12000,8900,3.4,14.0
+zinc,Zink,26270.0,95850.0,5500,7100,3.7,13.5
+lead,Blei,20412.0,96390.0,4500,11340,1.8,8.5
+wood_softwood,Holz (Nadelholz/Schnittholz),163.2,1056.0,700,480,0.34,2.2
+wood_hardwood,Holz (Laubholz),294.0,1820.0,1200,700,0.42,2.6
+brick,Backstein / Ziegel,336.0,1330.0,320,1400,0.24,0.95
+glass,Flachglas,3000.0,11250.0,900,2500,1.2,4.5
+insulation_eps,Daemmung EPS,99.0,840.0,95,30,3.3,28.0
+insulation_mineral,Daemmung Mineralwolle,78.0,360.0,80,60,1.3,6.0
+insulation_pur,Daemmung PUR/PIR,143.5,1050.0,130,35,4.1,30.0
+mineral_fibre,Mineralfaser,100.0,464.0,85,80,1.25,5.8
+gypsum,Gips,207.0,1035.0,60,1150,0.18,0.9
+gypsum_board,Gipskarton / Gipsplatte,270.0,1260.0,90,900,0.3,1.4
+plaster,Verputz / Putz,320.0,1280.0,110,1600,0.2,0.8
+mortar,Moertel / Estrich,342.0,1330.0,140,1900,0.18,0.7
+ceramic,Keramik,1400.0,6400.0,300,2000,0.7,3.2
+ceramic_tile,Keramikfliesen,1794.0,8280.0,420,2300,0.78,3.6
+natural_stone,Naturstein,234.0,1430.0,600,2600,0.09,0.55
+limestone,Kalkstein,204.0,960.0,350,2400,0.085,0.4
+sandstone,Sandstein,176.0,880.0,400,2200,0.08,0.4
+fibre_cement,Faserzement,952.0,4760.0,320,1700,0.56,2.8
+bitumen,Bitumen / Abdichtungsbahn,588.0,9975.0,180,1050,0.56,9.5
+pvc,PVC,4060.0,26600.0,350,1400,2.9,19.0
+polyethylene,Polyethylen (PE),1995.0,20900.0,320,950,2.1,22.0
+rubber,Gummi / Kautschuk,4275.0,36000.0,280,1500,2.85,24.0
+linoleum,Linoleum,1080.0,7800.0,130,1200,0.9,6.5
+clay,Lehm,54.0,180.0,90,1800,0.03,0.1
+cork,Kork,90.0,1080.0,240,180,0.5,6.0
+straw,Stroh,3.0,15.0,40,100,0.03,0.15
+unknown,Unbekannt,,,,,,

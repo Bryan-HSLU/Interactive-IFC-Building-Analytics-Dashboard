@@ -26,11 +26,11 @@ STATUS_COLORS = {
 }
 
 SIA_COLORS = {
-    "HNF": "#2E86AB",
-    "NNF": "#8D6E63",
-    "VF": "#5C8A6E",
-    "FF": "#7B5EA7",
-    "KF": "#C44536",
+    "HNF": "#E3001B",   # official SIA red
+    "NNF": "#F7901E",   # official SIA orange
+    "VF":  "#FFE600",   # official SIA yellow
+    "FF":  "#00A0D2",   # official SIA blue
+    "KF":  "#9CA3AF",   # neutral grey
 }
 
 SIA_416_DESCRIPTIONS = {

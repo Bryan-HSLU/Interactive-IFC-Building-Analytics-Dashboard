@@ -160,20 +160,30 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
         values.append(row["area_m2"])
         customdata.append(usage)
 
+    # Build usage→sia lookup once for O(1) access
+    usage_to_sia = agg.set_index("usage")["sia_group"].to_dict()
+
+    def _lighten(hex_color: str, factor: float = 0.55) -> str:
+        """Blend hex_color toward white by factor (0=no change, 1=white)."""
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        r2 = int(r + (255 - r) * factor)
+        g2 = int(g + (255 - g) * factor)
+        b2 = int(b + (255 - b) * factor)
+        return f"#{r2:02x}{g2:02x}{b2:02x}"
+
     colors = []
     for id_, lbl in zip(ids, labels):
         if id_ == "root":
-            colors.append(_get_room_color("total"))
+            colors.append("#1B3A5B")
         elif id_.startswith("sia::"):
-            colors.append(SIA_COLORS.get(lbl, _get_room_color(lbl)))
+            # SIA group nodes: official SIA color (full saturation)
+            colors.append(SIA_COLORS.get(lbl, "#9CA3AF"))
         else:
-            # Use the SIA color of the parent group for consistency
-            sia_group = None
-            for _, row in agg.iterrows():
-                if row["usage"] == lbl:
-                    sia_group = row["sia_group"]
-                    break
-            colors.append(SIA_COLORS.get(sia_group, _get_room_color(lbl)) if sia_group else _get_room_color(lbl))
+            # Leaf (room/usage) nodes: lightened tint of parent SIA color
+            sia_group = usage_to_sia.get(lbl)
+            base = SIA_COLORS.get(sia_group, "#9CA3AF") if sia_group else "#B8BFC7"
+            colors.append(_lighten(base, 0.5))
 
     fig = go.Figure(
         go.Treemap(
@@ -1057,72 +1067,81 @@ def create_room_co2_density_bar(space_df: pd.DataFrame, selected_raum: str = Non
     )
     return fig
 
-def create_co2_pareto(element_df: pd.DataFrame) -> go.Figure:
+def create_co2_pareto(element_df: pd.DataFrame, group_col: str = "grouped_material") -> go.Figure:
     if element_df is None or element_df.empty or "co2e_total" not in element_df.columns:
-        return _empty_fig("Keine CO₂-Daten verfügbar")
-    
-    df_m = element_df.dropna(subset=["co2e_total", "material"]).copy()
+        return _empty_fig("No CO₂ data available")
+
+    # Ensure grouping column exists
+    if group_col not in element_df.columns:
+        if group_col == "grouped_material" and "material" in element_df.columns:
+            element_df = element_df.copy()
+            element_df["grouped_material"] = element_df["material"].apply(_classify_material_group)
+        else:
+            group_col = "material"
+
+    df_m = element_df.dropna(subset=["co2e_total", group_col]).copy()
     if df_m.empty:
-        return _empty_fig("Keine Materialien mit CO₂")
-        
+        return _empty_fig("No materials with CO₂")
+
     df_m["co2_num"] = pd.to_numeric(df_m["co2e_total"], errors="coerce").fillna(0)
-    agg = df_m.groupby("material")["co2_num"].sum().sort_values(ascending=False).reset_index()
+    agg = df_m.groupby(group_col)["co2_num"].sum().sort_values(ascending=False).reset_index()
     agg = agg[agg["co2_num"] > 0]
     if agg.empty:
-        return _empty_fig("CO₂-Wert ist 0")
-        
+        return _empty_fig("CO₂ values are 0")
+
     total_co2 = agg["co2_num"].sum()
     agg["cum_pct"] = agg["co2_num"].cumsum() / total_co2 * 100
-    
+    mat_col = agg.columns[0]  # first column = group name
+
     fig = go.Figure()
-    
-    colors = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in agg["material"]]
+
+    colors = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in agg[mat_col]]
     
     fig.add_trace(
         go.Bar(
-            x=agg["material"],
+            x=agg[mat_col],
             y=agg["co2_num"],
             marker_color=colors,
-            name="CO₂-Last",
-            hovertemplate="Material: %{x}<br>CO₂: %{y:,.0f} kg<extra></extra>"
+            name="CO₂",
+            hovertemplate="%{x}<br>CO₂: %{y:,.0f} kg<extra></extra>",
         )
     )
-    
+
     fig.add_trace(
         go.Scatter(
-            x=agg["material"],
+            x=agg[mat_col],
             y=agg["cum_pct"],
             mode="lines+markers",
-            name="Kumuliert %",
+            name="Cumulative %",
             yaxis="y2",
             line=dict(color=COLORS["text"], width=2),
             marker=dict(size=6, color=COLORS["text"]),
-            hovertemplate="Material: %{x}<br>Kumuliert: %{y:.1f}%<extra></extra>"
+            hovertemplate="%{x}<br>Cumulative: %{y:.1f}%<extra></extra>",
         )
     )
-    
+
     fig = apply_default_layout(fig, "")
-    
+
     fig.add_shape(
         type="line",
         x0=0, x1=1, xref="paper",
         y0=80, y1=80, yref="y2",
         line=dict(color=COLORS["error_critical"], width=1, dash="dash"),
     )
-    
+
     fig.update_layout(
         yaxis2=dict(
-            title="Kumuliert %",
+            title="Cumulative %",
             overlaying="y",
             side="right",
             range=[0, 105],
             gridcolor="rgba(0,0,0,0)",
-            tickfont=dict(size=11, color=COLORS["text_light"])
+            tickfont=dict(size=11, color=COLORS["text_light"]),
         ),
         showlegend=False,
-        margin=dict(r=50)
+        margin=dict(r=50),
     )
-    
+
     return fig
 
 def create_sia_gauge(co2_per_m2: float, limit: float = 11.0) -> go.Figure:
@@ -1269,21 +1288,28 @@ def create_cost_co2_scatter(element_df: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(title="CO₂e (kg)")
     return fig
 
-def create_cost_breakdown_bar(element_df: pd.DataFrame) -> go.Figure:
+def create_cost_breakdown_bar(element_df: pd.DataFrame, group_col: str = "grouped_material") -> go.Figure:
     if element_df is None or element_df.empty or "cost_chf" not in element_df.columns:
-        return _empty_fig("Keine Kostendaten")
-        
-    df_m = element_df.dropna(subset=["grouped_material", "cost_chf"]).copy()
+        return _empty_fig("No cost data available")
+
+    if group_col not in element_df.columns:
+        if group_col == "grouped_material" and "material" in element_df.columns:
+            element_df = element_df.copy()
+            element_df["grouped_material"] = element_df["material"].apply(_classify_material_group)
+        else:
+            group_col = "material"
+
+    df_m = element_df.dropna(subset=[group_col, "cost_chf"]).copy()
     df_m["cost_num"] = pd.to_numeric(df_m["cost_chf"], errors="coerce").fillna(0)
-    
-    agg = df_m.groupby("grouped_material")["cost_num"].sum().sort_values(ascending=True)
-    agg = agg[agg>0]
-    
+
+    agg = df_m.groupby(group_col)["cost_num"].sum().sort_values(ascending=True)
+    agg = agg[agg > 0]
+
     if agg.empty:
-        return _empty_fig("Kosten sind 0")
-        
+        return _empty_fig("Costs are 0")
+
     colors = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in agg.index]
-    
+
     fig = go.Figure(go.Bar(
         x=agg.values,
         y=agg.index,
@@ -1291,11 +1317,11 @@ def create_cost_breakdown_bar(element_df: pd.DataFrame) -> go.Figure:
         marker_color=colors,
         text=[f"CHF {v:,.0f}" for v in agg.values],
         textposition="auto",
-        hovertemplate="%{y}: CHF %{x:,.0f}<extra></extra>"
+        hovertemplate="%{y}: CHF %{x:,.0f}<extra></extra>",
     ))
-    
+
     fig = apply_default_layout(fig, "")
-    fig.update_layout(xaxis_title="Kosten (CHF)")
+    fig.update_layout(xaxis_title="Cost (CHF)")
     return fig
 
 def create_circularity_donut(element_df: pd.DataFrame) -> go.Figure:
@@ -1425,13 +1451,37 @@ def create_material_flow_sankey(element_df):
     target = [int(node_idx[r["elem_type"]]) for _, r in agg.iterrows()]
     value = [float(v) for v in agg["volume_m3"].tolist()]
 
+    # Node colors: material groups get their palette color, element types neutral
+    n_mat = len(mat_groups)
+    node_colors = (
+        [_MATERIAL_GROUP_COLORS.get(m, "#B0BEC5") for m in mat_groups]
+        + ["#90A4AE"] * len(elem_types)
+    )
+
     fig = go.Figure(go.Sankey(
-        node=dict(label=nodes, pad=15, thickness=20),
-        link=dict(source=source, target=target, value=value,
-                  hovertemplate="%{source.label} → %{target.label}: %{value:.1f} m³<extra></extra>")
+        arrangement="snap",
+        node=dict(
+            label=nodes,
+            color=node_colors,
+            pad=20,
+            thickness=15,
+        ),
+        link=dict(
+            source=source,
+            target=target,
+            value=value,
+        ),
     ))
-    fig.update_layout(title="Material Flow: Material Group → Element Type (Volume)", height=500)
-    return apply_default_layout(fig)
+    # Do NOT call apply_default_layout — it breaks Sankey with cartesian axis settings
+    fig.update_layout(
+        title=dict(text="Material Flow: Material Group → Element Type (Volume)",
+                   font=dict(size=13, family="Inter, sans-serif")),
+        height=500,
+        font=dict(family="Inter, sans-serif", size=12),
+        paper_bgcolor="white",
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+    return fig
 
 
 def create_quality_radar(error_counts, total_elements):

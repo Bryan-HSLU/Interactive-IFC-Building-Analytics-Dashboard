@@ -105,18 +105,9 @@ if not element_df_all.empty and "grouped_material" in element_df_all.columns:
 else:
     st.caption("📦 Comprehensive material composition and quantity distribution analysis.")
 
-# Apply material & class filter for KPIs, stacked bar, and table
+# Apply class filter for KPIs (material filter applied after chart A)
 if cf_class and "ifc_class" in element_df.columns:
     element_df = element_df[element_df["ifc_class"] == cf_class]
-if cf_mat and "grouped_material" in element_df.columns:
-    if cf_mat == "Other":
-        element_df = element_df[~element_df["grouped_material"].isin(top_mats)]
-    else:
-        element_df = element_df[element_df["grouped_material"] == cf_mat]
-
-if element_df.empty:
-    st.warning("No element data available under the active filters.")
-    st.stop()
 
 # Show active filter info
 active_parts = []
@@ -147,36 +138,86 @@ kpi[3].metric(
 
 st.divider()
 
-# -- Chart A: Quantities by Material Group -------------------------------------
+# ── Material View Toggle ──────────────────────────────────────────────────────
+_prev_view = st.session_state.get("_p4_prev_mat_view", "grouped")
+mat_view = st.radio(
+    "Material view",
+    ["Grouped (6 categories)", "Individual raw materials"],
+    index=0,
+    horizontal=True,
+    key="p4_mat_view",
+)
+_mat_individual = mat_view.startswith("Individual")
+# Reset cross-filter when switching view to avoid stale filter
+if _mat_individual != (_prev_view == "individual"):
+    st.session_state["cf_page4_material"] = None
+st.session_state["_p4_prev_mat_view"] = "individual" if _mat_individual else "grouped"
+
+# Top-N slider for individual mode
+_top_n = 20
+if _mat_individual:
+    _top_n = st.slider("Show top N materials by volume", min_value=5, max_value=50, value=20, step=5)
+
+# Re-read cf_mat after possible reset
+cf_mat = st.session_state.get("cf_page4_material")
+
+# -- Chart A: Quantities by Material Group / Individual -------------------------
 st.subheader("📦 Quantities by Material Group")
-st.caption("🖱️ Click a bar to filter by this material. Use the slider to hide small groups.")
+if _mat_individual:
+    st.caption("Showing all individual raw materials (top N by volume). 🖱️ Click a bar to filter.")
+else:
+    st.caption("🖱️ Click a bar to filter by this material. Use the slider to hide small groups.")
 
-# Compute max volume for slider
-_max_vol = 0.0
-if "volume_m3" in element_df_all.columns and not element_df_all.empty:
-    _agg_check = element_df_all.dropna(subset=["volume_m3"])
-    _agg_check["volume_m3"] = pd.to_numeric(_agg_check["volume_m3"], errors="coerce")
-    if not _agg_check.empty:
-        _grouped = _agg_check.groupby(
-            _agg_check["grouped_material"] if "grouped_material" in _agg_check.columns
-            else _agg_check["material"].apply(_classify_material_group)
-        )["volume_m3"].sum()
-        _max_vol = float(_grouped.max()) if not _grouped.empty else 0.0
+if _mat_individual:
+    # Build individual material volume bar inline
+    from src.constants import MATERIAL_GROUP_COLORS as _MGC, CATEGORICAL_COLORS as _CAT
+    _idf = element_df_all.copy()
+    if "volume_m3" in _idf.columns:
+        _idf["volume_m3"] = pd.to_numeric(_idf["volume_m3"], errors="coerce").fillna(0)
+        _idf = _idf[_idf["volume_m3"] > 0]
+        if "material" in _idf.columns:
+            _mat_agg = _idf.groupby("material")["volume_m3"].sum().nlargest(_top_n).sort_values(ascending=True)
+            _pal = _CAT * (len(_mat_agg) // len(_CAT) + 1)
+            fig_mat = go.Figure(go.Bar(
+                x=_mat_agg.values,
+                y=_mat_agg.index,
+                orientation="h",
+                marker_color=_pal[:len(_mat_agg)],
+                text=[f"{v:,.1f}".replace(",", "'") for v in _mat_agg.values],
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate="<b>%{y}</b><br>Volume: %{x:,.1f} m³<extra></extra>",
+            ))
+            fig_mat.update_layout(
+                template="plotly_white", xaxis_title="m³", yaxis_title="",
+                margin=dict(l=10, r=80, t=20, b=30), height=max(300, len(_mat_agg) * 28),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False,
+            )
+        else:
+            fig_mat = go.Figure()
+    else:
+        fig_mat = go.Figure()
+else:
+    # Compute max volume for slider
+    _max_vol = 0.0
+    if "volume_m3" in element_df_all.columns and not element_df_all.empty:
+        _agg_check = element_df_all.dropna(subset=["volume_m3"]).copy()
+        _agg_check["volume_m3"] = pd.to_numeric(_agg_check["volume_m3"], errors="coerce")
+        if not _agg_check.empty:
+            _gc = _agg_check.groupby("grouped_material")["volume_m3"].sum() if "grouped_material" in _agg_check.columns else pd.Series(dtype=float)
+            _max_vol = float(_gc.max()) if not _gc.empty else 0.0
 
-min_vol_threshold = 0.0
-if _max_vol > 0:
-    min_vol_threshold = st.slider(
-        "Minimum volume threshold (m³) — hide groups below this value",
-        min_value=0.0,
-        max_value=float(_max_vol * 0.5),
-        value=0.0,
-        step=max(0.1, float(_max_vol * 0.01)),
-        format="%.1f",
-    )
+    min_vol_threshold = 0.0
+    if _max_vol > 0:
+        min_vol_threshold = st.slider(
+            "Minimum volume threshold (m³) — hide groups below this value",
+            min_value=0.0, max_value=float(_max_vol * 0.5), value=0.0,
+            step=max(0.1, float(_max_vol * 0.01)), format="%.1f",
+        )
+    unit = st.session_state.get("unit_volume", "m³")
+    fig_mat = create_material_volume_bar(element_df_all, unit, min_volume=min_vol_threshold)
 
-unit = st.session_state.get("unit_volume", "m³")
-fig_mat = create_material_volume_bar(element_df_all, unit, min_volume=min_vol_threshold)
-fig_mat.update_layout(height=500)
+fig_mat.update_layout(height=max(fig_mat.layout.height or 400, 400))
 
 ev_mat = st.plotly_chart(
     fig_mat, on_select="rerun", key="p4_volume_bar_chart", use_container_width=True
@@ -189,11 +230,27 @@ if ev_mat and ev_mat.selection and ev_mat.selection.points:
         st.session_state.cf_page4_material = clicked
         st.rerun()
 
+# Apply individual-material filter if in individual mode
+if _mat_individual and cf_mat and "material" in element_df.columns:
+    element_df = element_df[element_df["material"] == cf_mat]
+elif not _mat_individual and cf_mat and "grouped_material" in element_df.columns:
+    if cf_mat == "Other":
+        element_df = element_df[~element_df["grouped_material"].isin(top_mats)]
+    else:
+        element_df = element_df[element_df["grouped_material"] == cf_mat]
+
+if element_df.empty:
+    st.warning("No element data available under the active filters.")
+    st.stop()
+
 st.divider()
 
 # -- Chart B: Material Volume per Component Group ------------------------------
 st.subheader("🏗️ Material Volume per Component Group")
-st.caption("📊 Absolute volume (m³) per material group per component category. Toggle materials via the legend.")
+if _mat_individual:
+    st.caption("📊 Absolute volume (m³) per individual material per component category. Toggle materials via the legend.")
+else:
+    st.caption("📊 Absolute volume (m³) per material group per component category. Toggle materials via the legend.")
 fig_stacked = create_element_material_stacked_bar(element_df)
 fig_stacked.update_layout(
     height=500,

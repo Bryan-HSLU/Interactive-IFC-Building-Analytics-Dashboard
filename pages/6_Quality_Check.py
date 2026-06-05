@@ -265,8 +265,8 @@ with tab_overview:
         storeys = sorted(storey_err["storey"].dropna().unique())
 
         ERR_COLORS = {
-            "missing_storey": COLORS["error_warning"],
-            "missing_material": COLORS["error_warning"],
+            "missing_storey": COLORS["error_warning"],   # orange
+            "missing_material": "#7B5EA7",               # purple — CB-safe, distinct from orange/red/blue
             "missing_quantity": COLORS["error_critical"],
             "missing_usage": COLORS["primary"],
             "missing_status": COLORS["primary"],
@@ -502,21 +502,29 @@ with tab_struktur:
             _mc_agg.columns = ["ifc_class", "with_mat", "total"]
             _mc_agg["pct"] = (_mc_agg["with_mat"] / _mc_agg["total"] * 100).round(1)
             _mc_agg = _mc_agg.sort_values("pct", ascending=True)
-            _colors_mc = ["#2E86AB" if p >= 80 else ("#E07B39" if p >= 40 else "#C44536") for p in _mc_agg["pct"]]
-            fig_mc = go.Figure(go.Bar(
-                x=_mc_agg["pct"], y=_mc_agg["ifc_class"], orientation="h",
-                marker_color=_colors_mc,
-                text=[f"{p:.0f}%" for p in _mc_agg["pct"]],
-                textposition="outside", cliponaxis=False,
+            fig_mc = go.Figure()
+            fig_mc.add_trace(go.Bar(
+                y=_mc_agg["ifc_class"], x=_mc_agg["pct"], orientation="h",
+                name="With Material", marker_color="#2E86AB",
+                text=[f"{p:.0f}%" for p in _mc_agg["pct"]], textposition="inside",
+                insidetextanchor="middle",
                 hovertemplate="<b>%{y}</b><br>%{x:.1f}% with material (%{customdata[0]} of %{customdata[1]})<extra></extra>",
                 customdata=list(zip(_mc_agg["with_mat"], _mc_agg["total"])),
             ))
+            fig_mc.add_trace(go.Bar(
+                y=_mc_agg["ifc_class"], x=(100 - _mc_agg["pct"]), orientation="h",
+                name="Missing", marker_color="#E8EBEF",
+                hovertemplate="<b>%{y}</b><br>%{x:.1f}% missing material<extra></extra>",
+            ))
             fig_mc.update_layout(
+                barmode="stack",
                 template="plotly_white",
                 font=dict(family="Inter, sans-serif", size=12, color=COLORS["text"]),
-                xaxis=dict(title="% with Material", range=[0, 115], ticksuffix="%", gridcolor=COLORS["grid"], showgrid=True, zeroline=False),
+                xaxis=dict(title="% Coverage", range=[0, 100], ticksuffix="%", gridcolor=COLORS["grid"], showgrid=True, zeroline=False),
                 yaxis=dict(title=""), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                showlegend=False, margin=dict(l=10, r=50, t=20, b=30),
+                legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center"),
+                margin=dict(l=10, r=30, t=20, b=50),
+                height=max(300, len(_mc_agg) * 30),
             )
             st.plotly_chart(fig_mc, use_container_width=True, config={"displayModeBar": False})
     else:

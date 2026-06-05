@@ -5,7 +5,6 @@ from src.state_manager import init_session_state, get_element_df, get_space_df, 
 from src.filters import render_sidebar, render_cross_filter_reset
 from src.chart_factory import (
     create_co2_pareto,
-    create_sia_gauge,
     create_renovation_waterfall,
     create_circularity_donut,
     create_cost_co2_scatter,
@@ -13,14 +12,17 @@ from src.chart_factory import (
     create_room_co2_scatter,
     create_storey_material_heatmap,
     create_co2_diverging_bar,
+    create_kbob_per_m3_bar,
     _classify_material_group,
     _MATERIAL_GROUP_COLORS,
 )
 from src.ui_helpers import hero_kpi_card, scenario_card, fmt_co2, fmt_chf
-from src.impact_calculator import get_match_coverage, get_unmatched_materials
-from src.constants import COLORS, SIA_416_MAP, SIA_416_DEFAULT, IFC_CLASS_LABELS
+from src.impact_calculator import get_match_coverage, get_unmatched_materials, load_factors
+from src.constants import COLORS, SIA_416_MAP, SIA_416_DEFAULT, IFC_CLASS_LABELS, KBOB_CSV_PATH
 
 init_session_state()
+
+kbob_df = load_factors(KBOB_CSV_PATH)
 
 try:
     with open("assets/style.css") as f:
@@ -127,12 +129,15 @@ else:
     _p5_group_col = "grouped_material"
     all_mat_options = sorted(element_df["grouped_material"].dropna().unique().tolist()) if "grouped_material" in element_df.columns else []
 
-selected_mat_groups = st.multiselect(
-    "🎨 Filter by material (applies to all tabs)",
-    options=all_mat_options,
-    default=all_mat_options,
-    key="p5_mat_filter",
-)
+if _p5_mat_individual:
+    selected_mat_groups = st.multiselect(
+        "🎨 Filter by material (applies to all tabs)",
+        options=all_mat_options,
+        default=all_mat_options,
+        key="p5_mat_filter",
+    )
+else:
+    selected_mat_groups = all_mat_options
 
 # Build globally filtered df
 if selected_mat_groups and _p5_group_col in element_df.columns:
@@ -158,12 +163,12 @@ with tab_co2:
         st.caption("Which material groups cause the largest share? (descending, with cumulative line)")
         st.plotly_chart(create_co2_pareto(filtered_df, group_col=_p5_group_col), use_container_width=True, config={"displayModeBar": False})
     with col_gauge:
-        st.subheader("SIA 2032 Target")
-        st.caption("Actual value vs. limit of 11 kg CO₂e/m²·a")
-        if total_area > 0:
-            st.plotly_chart(create_sia_gauge(co2_per_m2), use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.info("No NGF available — SIA gauge requires room data (IfcSpace).")
+        st.subheader("CO₂ per m³ by Material")
+        st.caption("KBOB embodied carbon intensity (kg CO₂e per m³) — compare relative intensity of materials.")
+        st.plotly_chart(
+            create_kbob_per_m3_bar(kbob_df, "co2e_kg_per_m3", "CO₂ per m³", "kg CO₂e/m³", COLORS["error_critical"]),
+            use_container_width=True, config={"displayModeBar": False},
+        )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -247,6 +252,15 @@ with tab_costs:
         st.metric("Cost Efficiency", f"CHF {cost_per_m2:,.0f} / m²".replace(",", "'"),
                   help="Total construction costs divided by net floor area (NGF)")
 
+    # Cost per m³ by material (KBOB reference)
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("💰 Cost per m³ by Material")
+    st.caption("KBOB unit cost (CHF per m³) — compare cost intensity across material types.")
+    st.plotly_chart(
+        create_kbob_per_m3_bar(kbob_df, "cost_chf_per_m3", "Cost per m³", "CHF/m³", COLORS["primary"]),
+        use_container_width=True, config={"displayModeBar": False},
+    )
+
     # Cost breakdown table
     st.markdown("<br>", unsafe_allow_html=True)
     st.subheader("📋 Cost Breakdown Table")
@@ -318,6 +332,15 @@ with tab_energy:
                 showlegend=False, margin=dict(l=10, r=70, t=20, b=30), height=220,
             )
             st.plotly_chart(fig_ge, use_container_width=True, config={"displayModeBar": False})
+
+        # Grey Energy per m³ by material (KBOB reference)
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("⚡ Grey Energy per m³ by Material")
+        st.caption("KBOB primary energy intensity (kWh per m³) — compare embodied energy across material types.")
+        st.plotly_chart(
+            create_kbob_per_m3_bar(kbob_df, "grey_energy_kwh_per_m3", "Grey Energy per m³", "kWh/m³", COLORS["error_warning"]),
+            use_container_width=True, config={"displayModeBar": False},
+        )
 
         # Embodied Energy per m² NRF by Component Group
         st.markdown("<br>", unsafe_allow_html=True)
@@ -414,8 +437,7 @@ with tab_combined:
     else:
         st.subheader("Cost vs. CO₂ Trade-off")
         st.caption("Bubble chart: trade-off between cost and CO₂ intensity per material group (size = volume).")
-        st.plotly_chart(create_cost_co2_scatter(filtered_df), use_container_width=True, config={"displayModeBar": False})
-        st.info("Switch to **Renovation mode** on Page 1 to see the CO₂ diverging bar and renovation balance.")
+        st.plotly_chart(create_cost_co2_scatter(filtered_df, group_col=_p5_group_col), use_container_width=True, config={"displayModeBar": False})
 
 # ── Data Tab ──
 with st.expander("📊 Raw Element Data", expanded=False):

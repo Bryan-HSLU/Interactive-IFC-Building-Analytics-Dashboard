@@ -317,3 +317,10 @@ SIA_416_MAP = {
     "konstruktion": "KF", "construction": "KF",
 }
 SIA_416_DEFAULT = "NNF"  # fallback group
+
+FIXED_ELEMENT_COSTS_CHF = {
+    "IfcDoor": 1800,
+    "IfcWindow": 1500,
+    "IfcStair": 6000,
+    "IfcStairFlight": 6000,
+}

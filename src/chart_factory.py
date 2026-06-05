@@ -18,6 +18,7 @@ from src.constants import (
     SIA_416_DEFAULT,
     SIA_COLORS,
     IFC_CLASS_LABELS,
+    CATEGORICAL_COLORS,
 )
 
 
@@ -175,7 +176,7 @@ def create_room_treemap(space_df: pd.DataFrame) -> go.Figure:
     colors = []
     for id_, lbl in zip(ids, labels):
         if id_ == "root":
-            colors.append("#1B3A5B")
+            colors.append("#D9DDE2")
         elif id_.startswith("sia::"):
             # SIA group nodes: official SIA color (full saturation)
             colors.append(SIA_COLORS.get(lbl, "#9CA3AF"))
@@ -611,16 +612,16 @@ def create_room_co2_scatter(space_df: pd.DataFrame, selected_raum: str = None) -
 # ── Stacked Bar Chart 100%: "Bauteil-Material-Verteilung" ──────────────────
 
 
-def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
+def create_element_material_stacked_bar(element_df: pd.DataFrame, individual: bool = False) -> go.Figure:
     part_order = ["Wall", "Floor", "Ceiling", "Column", "Beam", "Door", "Window", "Roof", "Stair", "Other"]
-    group_order = ["Concrete", "Wood", "Metal", "Insulation", "Glass", "Other"]
 
     if (
         element_df.empty
         or "ifc_class" not in element_df.columns
         or "material" not in element_df.columns
     ):
-        pivot_pct = pd.DataFrame(0.0, index=part_order, columns=group_order)
+        group_order = ["Concrete", "Wood", "Metal", "Insulation", "Glass", "Other"]
+        pivot_vol = pd.DataFrame(0.0, index=part_order, columns=group_order)
     else:
         df = element_df.copy()
 
@@ -656,24 +657,39 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame) -> go.Figure:
 
         df["part"] = df.apply(_map_class_to_part, axis=1)
 
-        if df.empty:
-            pivot_vol = pd.DataFrame(0.0, index=part_order, columns=group_order)
+        if individual:
+            df["mat_group"] = df["material"].fillna("Unknown").astype(str)
         else:
             df["mat_group"] = df["material"].apply(_classify_material_group)
-            if "volume_m3" in df.columns:
-                df["volume_m3"] = pd.to_numeric(df["volume_m3"], errors="coerce").fillna(0)
-                pivot_vol = df.pivot_table(
-                    index="part", columns="mat_group", values="volume_m3", aggfunc="sum", fill_value=0
-                )
-            else:
-                pivot_vol = df.pivot_table(
-                    index="part", columns="mat_group", aggfunc="size", fill_value=0
-                ).astype(float)
+
+        if "volume_m3" in df.columns:
+            df["volume_m3"] = pd.to_numeric(df["volume_m3"], errors="coerce").fillna(0)
+            pivot_vol = df.pivot_table(
+                index="part", columns="mat_group", values="volume_m3", aggfunc="sum", fill_value=0
+            )
+        else:
+            pivot_vol = df.pivot_table(
+                index="part", columns="mat_group", aggfunc="size", fill_value=0
+            ).astype(float)
+
+        if individual:
+            # Cap to top-15 materials by total volume for legibility
+            top_mats = pivot_vol.sum().nlargest(15).index.tolist()
+            pivot_vol = pivot_vol.reindex(columns=top_mats, fill_value=0)
+            group_order = top_mats
+        else:
+            group_order = ["Concrete", "Wood", "Metal", "Insulation", "Glass", "Other"]
             pivot_vol = pivot_vol.reindex(index=part_order, columns=group_order, fill_value=0)
 
+        pivot_vol = pivot_vol.reindex(index=part_order, fill_value=0)
+
+    _pal = CATEGORICAL_COLORS * (len(group_order) // len(CATEGORICAL_COLORS) + 1)
     fig = go.Figure()
-    for grp in group_order:
-        color = _MATERIAL_GROUP_COLORS.get(grp, "#BDBDBD")
+    for i, grp in enumerate(group_order):
+        if individual:
+            color = _pal[i]
+        else:
+            color = _MATERIAL_GROUP_COLORS.get(grp, "#BDBDBD")
         fig.add_trace(
             go.Bar(
                 x=pivot_vol.index,
@@ -1249,28 +1265,39 @@ def create_renovation_waterfall(element_df: pd.DataFrame) -> go.Figure:
     fig.update_layout(showlegend=False)
     return fig
 
-def create_cost_co2_scatter(element_df: pd.DataFrame) -> go.Figure:
+def create_cost_co2_scatter(element_df: pd.DataFrame, group_col: str = "grouped_material") -> go.Figure:
     if element_df is None or element_df.empty or "cost_chf" not in element_df.columns or "co2e_total" not in element_df.columns:
         return _empty_fig("Kosten oder CO₂-Daten fehlen")
-        
-    df_m = element_df.dropna(subset=["grouped_material", "cost_chf", "co2e_total", "volume_m3"]).copy()
+
+    if group_col not in element_df.columns:
+        if group_col == "grouped_material" and "material" in element_df.columns:
+            element_df = element_df.copy()
+            element_df["grouped_material"] = element_df["material"].apply(_classify_material_group)
+            group_col = "grouped_material"
+        else:
+            group_col = "material"
+
+    df_m = element_df.dropna(subset=[group_col, "cost_chf", "co2e_total"]).copy()
+    if "volume_m3" not in df_m.columns:
+        df_m["volume_m3"] = 0.0
     if df_m.empty:
         return _empty_fig("Daten unvollständig")
-        
+
     df_m["cost_num"] = pd.to_numeric(df_m["cost_chf"], errors="coerce").fillna(0)
     df_m["co2_num"] = pd.to_numeric(df_m["co2e_total"], errors="coerce").fillna(0)
     df_m["vol_num"] = pd.to_numeric(df_m["volume_m3"], errors="coerce").fillna(0)
-    
-    agg = df_m.groupby("grouped_material").agg({"cost_num": "sum", "co2_num": "sum", "vol_num": "sum"}).reset_index()
+
+    agg = df_m.groupby(group_col).agg({"cost_num": "sum", "co2_num": "sum", "vol_num": "sum"}).reset_index()
     agg = agg[(agg["cost_num"]>0) | (agg["co2_num"]>0)]
-    
-    colors = [_MATERIAL_GROUP_COLORS.get(m, "#C9CDD3") for m in agg["grouped_material"]]
+
+    _pal = CATEGORICAL_COLORS * (len(agg) // len(CATEGORICAL_COLORS) + 1)
+    colors = [_MATERIAL_GROUP_COLORS.get(m, _pal[i]) for i, m in enumerate(agg[group_col])]
     
     fig = go.Figure(data=go.Scatter(
         x=agg["cost_num"],
         y=agg["co2_num"],
         mode="markers+text",
-        text=agg["grouped_material"],
+        text=agg[group_col],
         textposition="top center",
         marker=dict(
             size=agg["vol_num"],
@@ -1323,6 +1350,43 @@ def create_cost_breakdown_bar(element_df: pd.DataFrame, group_col: str = "groupe
     fig = apply_default_layout(fig, "")
     fig.update_layout(xaxis_title="Cost (CHF)")
     return fig
+
+def create_kbob_per_m3_bar(kbob_df: pd.DataFrame, value_col: str, title: str, unit: str, color: str) -> go.Figure:
+    """Bar chart: KBOB intensity per m³ by material (co2, cost, or grey energy)."""
+    if kbob_df is None or kbob_df.empty:
+        return _empty_fig(f"No KBOB data for {value_col}")
+    df = kbob_df.copy()
+    if value_col not in df.columns:
+        return _empty_fig(f"Column '{value_col}' not found in KBOB data")
+    df[value_col] = pd.to_numeric(df[value_col], errors="coerce")
+    df = df.dropna(subset=[value_col])
+    df = df[df[value_col] > 0].sort_values(value_col, ascending=True)
+    label_col = "material_label_de" if "material_label_de" in df.columns else "material_key"
+    if df.empty:
+        return _empty_fig(f"No positive values for {value_col}")
+    fig = go.Figure(go.Bar(
+        x=df[value_col],
+        y=df[label_col],
+        orientation="h",
+        marker_color=color,
+        text=[f"{v:,.0f}".replace(",", "'") for v in df[value_col]],
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate=f"<b>%{{y}}</b><br>%{{x:,.1f}} {unit}<extra></extra>",
+    ))
+    fig.update_layout(
+        template="plotly_white",
+        xaxis_title=unit,
+        yaxis_title="",
+        height=max(400, len(df) * 22),
+        margin=dict(l=10, r=90, t=40, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        title=dict(text=title, x=0, font=dict(size=14, color=COLORS["text"])),
+    )
+    return fig
+
 
 def create_circularity_donut(element_df: pd.DataFrame) -> go.Figure:
     if element_df is None or element_df.empty or "status" not in element_df.columns or "volume_m3" not in element_df.columns:
@@ -1414,16 +1478,23 @@ def create_ifc_class_bar(element_df: pd.DataFrame) -> go.Figure:
 # ── Status-/Phasenverteilung (Cockpit Overview) ───────────────────────────────
 
 
-def create_material_flow_sankey(element_df):
+def create_material_flow_sankey(element_df, individual: bool = False):
     """Sankey: material group → element type → volume (flow encoding)."""
     if element_df is None or element_df.empty:
         return _empty_fig("No element data for Sankey")
 
     df = element_df.copy()
-    df["mat_group"] = df["material"].apply(_classify_material_group)
-    df["elem_type"] = df["ifc_class"].map(IFC_CLASS_LABELS).fillna("Other")
+    if individual:
+        df["mat_group"] = df["material"].fillna("Unknown").astype(str)
+        # Cap to top-15 raw materials by volume
+        if "volume_m3" in df.columns:
+            df["volume_m3"] = pd.to_numeric(df["volume_m3"], errors="coerce").fillna(0)
+            top_mats = df.groupby("mat_group")["volume_m3"].sum().nlargest(15).index.tolist()
+            df.loc[~df["mat_group"].isin(top_mats), "mat_group"] = "Other"
+    else:
+        df["mat_group"] = df["material"].apply(_classify_material_group)
 
-    # Replace empty/null labels
+    df["elem_type"] = df["ifc_class"].map(IFC_CLASS_LABELS).fillna("Other")
     df["mat_group"] = df["mat_group"].apply(lambda x: x if str(x).strip() else "Unknown")
     df["elem_type"] = df["elem_type"].apply(lambda x: x if str(x).strip() else "Unknown")
 
@@ -1440,7 +1511,6 @@ def create_material_flow_sankey(element_df):
     mat_groups = sorted(agg["mat_group"].unique().tolist())
     elem_types = sorted(agg["elem_type"].unique().tolist())
 
-    # Guard: need at least one source and one target
     if not mat_groups or not elem_types:
         return _empty_fig("Insufficient data for Sankey diagram")
 
@@ -1451,20 +1521,28 @@ def create_material_flow_sankey(element_df):
     target = [int(node_idx[r["elem_type"]]) for _, r in agg.iterrows()]
     value = [float(v) for v in agg["volume_m3"].tolist()]
 
-    # Node colors: material groups get their palette color, element types neutral
     n_mat = len(mat_groups)
-    node_colors = (
-        [_MATERIAL_GROUP_COLORS.get(m, "#B0BEC5") for m in mat_groups]
-        + ["#90A4AE"] * len(elem_types)
-    )
+    _pal = CATEGORICAL_COLORS * (n_mat // len(CATEGORICAL_COLORS) + 1)
+    if individual:
+        mat_colors = [_pal[i] for i in range(n_mat)]
+    else:
+        mat_colors = [_MATERIAL_GROUP_COLORS.get(m, "#B0BEC5") for m in mat_groups]
+    node_colors = mat_colors + ["#90A4AE"] * len(elem_types)
+
+    # Pin source nodes to x≈0, target nodes to x≈1 so labels render outside
+    node_x = [0.001] * n_mat + [0.999] * len(elem_types)
+    n_total = len(nodes)
+    node_y = [(i + 1) / (n_total + 1) for i in range(n_total)]
 
     fig = go.Figure(go.Sankey(
-        arrangement="snap",
+        arrangement="fixed",
         node=dict(
             label=nodes,
             color=node_colors,
             pad=20,
             thickness=15,
+            x=node_x,
+            y=node_y,
         ),
         link=dict(
             source=source,
@@ -1479,7 +1557,7 @@ def create_material_flow_sankey(element_df):
         height=500,
         font=dict(family="Inter, sans-serif", size=12),
         paper_bgcolor="white",
-        margin=dict(l=10, r=10, t=50, b=10),
+        margin=dict(l=120, r=120, t=50, b=10),
     )
     return fig
 

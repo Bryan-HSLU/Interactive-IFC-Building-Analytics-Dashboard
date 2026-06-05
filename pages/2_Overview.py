@@ -60,45 +60,14 @@ n_classes = element_df["ifc_class"].nunique() if element_df is not None and "ifc
 _, quality_summary = get_quality_data()
 quality_score = quality_summary.get("score", 0) if quality_summary else 0.0
 
-# Build per-storey series for sparklines
-_sparkline_cfg = dict(height=60, margin=dict(l=0, r=0, t=0, b=0),
-                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      showlegend=False, xaxis_visible=False, yaxis_visible=False)
-
-def _sparkline(y_values):
-    fig = go.Figure(go.Scatter(
-        y=y_values, mode="lines",
-        line=dict(width=2, color=COLORS["primary"]),
-        fill="tozeroy", fillcolor="rgba(46,134,171,0.15)",
-    ))
-    fig.update_layout(**_sparkline_cfg)
-    return fig
-
-_storeys_sorted = []
-_elements_per_storey = []
-_classes_per_storey = []
-if element_df is not None and "storey" in element_df.columns:
-    _storeys_sorted = sorted(element_df["storey"].dropna().unique())
-    _elements_per_storey = [len(element_df[element_df["storey"] == s]) for s in _storeys_sorted]
-    _classes_per_storey = [element_df[element_df["storey"] == s]["ifc_class"].nunique() for s in _storeys_sorted]
-
 from src.ui_helpers import hero_kpi_card
 kcols = st.columns(4)
 with kcols[0]:
     hero_kpi_card("ELEMENTS", f"{n_elements:,}".replace(",", "'"), "Components")
-    if _elements_per_storey:
-        st.plotly_chart(_sparkline(_elements_per_storey), use_container_width=True,
-                        config={"displayModeBar": False}, key="spark_elements")
 with kcols[1]:
     hero_kpi_card("STOREYS", str(n_storeys), "Levels")
-    if _storeys_sorted:
-        st.plotly_chart(_sparkline(list(range(1, len(_storeys_sorted) + 1))),
-                        use_container_width=True, config={"displayModeBar": False}, key="spark_storeys")
 with kcols[2]:
     hero_kpi_card("IFC CLASSES", str(n_classes), "Types")
-    if _classes_per_storey:
-        st.plotly_chart(_sparkline(_classes_per_storey), use_container_width=True,
-                        config={"displayModeBar": False}, key="spark_classes")
 with kcols[3]:
     hero_kpi_card("QUALITY", f"{quality_score:.0f}", "%")
 

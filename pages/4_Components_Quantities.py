@@ -198,24 +198,8 @@ if _mat_individual:
     else:
         fig_mat = go.Figure()
 else:
-    # Compute max volume for slider
-    _max_vol = 0.0
-    if "volume_m3" in element_df_all.columns and not element_df_all.empty:
-        _agg_check = element_df_all.dropna(subset=["volume_m3"]).copy()
-        _agg_check["volume_m3"] = pd.to_numeric(_agg_check["volume_m3"], errors="coerce")
-        if not _agg_check.empty:
-            _gc = _agg_check.groupby("grouped_material")["volume_m3"].sum() if "grouped_material" in _agg_check.columns else pd.Series(dtype=float)
-            _max_vol = float(_gc.max()) if not _gc.empty else 0.0
-
-    min_vol_threshold = 0.0
-    if _max_vol > 0:
-        min_vol_threshold = st.slider(
-            "Minimum volume threshold (m³) — hide groups below this value",
-            min_value=0.0, max_value=float(_max_vol * 0.5), value=0.0,
-            step=max(0.1, float(_max_vol * 0.01)), format="%.1f",
-        )
     unit = st.session_state.get("unit_volume", "m³")
-    fig_mat = create_material_volume_bar(element_df_all, unit, min_volume=min_vol_threshold)
+    fig_mat = create_material_volume_bar(element_df_all, unit, min_volume=0.0)
 
 fig_mat.update_layout(height=max(fig_mat.layout.height or 400, 400))
 
@@ -247,11 +231,17 @@ st.divider()
 
 # -- Chart B: Material Volume per Component Group ------------------------------
 st.subheader("🏗️ Material Volume per Component Group")
-if _mat_individual:
+_b_view = st.radio(
+    "Component-group material view",
+    ["Grouped (6 categories)", "Individual raw materials"],
+    index=0, horizontal=True, key="p4_stacked_view",
+)
+_b_individual = _b_view.startswith("Individual")
+if _b_individual:
     st.caption("📊 Absolute volume (m³) per individual material per component category. Toggle materials via the legend.")
 else:
     st.caption("📊 Absolute volume (m³) per material group per component category. Toggle materials via the legend.")
-fig_stacked = create_element_material_stacked_bar(element_df)
+fig_stacked = create_element_material_stacked_bar(element_df, individual=_b_individual)
 fig_stacked.update_layout(
     height=500,
     legend=dict(
@@ -317,8 +307,14 @@ st.divider()
 
 # -- Chart E: Material Flow (Sankey) -------------------------------------------
 st.subheader("🔀 Material Flow (Sankey)")
+_s_view = st.radio(
+    "Sankey material view",
+    ["Grouped (6 categories)", "Individual raw materials"],
+    index=0, horizontal=True, key="p4_sankey_view",
+)
+_s_individual = _s_view.startswith("Individual")
 st.caption("Flow from material group to element type by volume — shows which materials dominate which element types.")
-fig_sankey = create_material_flow_sankey(element_df)
+fig_sankey = create_material_flow_sankey(element_df, individual=_s_individual)
 st.plotly_chart(fig_sankey, use_container_width=True, key="p4_sankey")
 
 # -- Quantity Takeoff Table ----------------------------------------------------

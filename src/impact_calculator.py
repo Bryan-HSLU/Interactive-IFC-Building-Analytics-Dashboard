@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import re
-from src.constants import USAGE_MULTIPLIERS
+from src.constants import USAGE_MULTIPLIERS, FIXED_ELEMENT_COSTS_CHF
 
 # ── Aliases: ordered specific → general ──────────────────────────────────────
 # Each entry: (list of substrings that trigger this key, material_key)
@@ -345,6 +345,13 @@ def calculate_impacts(
                         cost_val = _safe_mul(factor.get("cost_chf_per_m3"), vol)
                 except Exception:
                     pass
+
+        # Fixed per-unit cost fallback for doors/windows/stairs when no material cost found
+        if cost_val is None:
+            ifc_cls = str(row.get("ifc_class", ""))
+            fixed = FIXED_ELEMENT_COSTS_CHF.get(ifc_cls)
+            if fixed is not None:
+                cost_val = float(fixed)
 
         co2_list.append(co2_val)
         energy_list.append(energy_val)

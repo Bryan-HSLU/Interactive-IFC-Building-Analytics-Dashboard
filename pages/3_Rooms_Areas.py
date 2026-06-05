@@ -121,41 +121,52 @@ else:
 
 st.divider()
 
-# ── Top 10 Rooms by Area ───────────────────────────────────────────────────────
-st.subheader("🏆 Top 10 Rooms by Area")
-st.caption("Largest rooms in the building, colored by SIA-416 group.")
+# ── Room Areas ────────────────────────────────────────────────────────────────
+st.subheader("🏆 Room Areas")
+st.caption("Room areas, colored by usage type. Use the slider to control how many rooms are shown.")
 
 valid_rooms = space_df.dropna(subset=["area_m2"])
 valid_rooms = valid_rooms[valid_rooms["area_m2"] > 0]
 
 if not valid_rooms.empty:
-    top10 = valid_rooms.nlargest(10, "area_m2").sort_values("area_m2", ascending=True)
-    name_col = "name" if "name" in top10.columns else "usage"
-    top10["_label"] = top10[name_col].astype(str) + " (" + top10["sia_group"] + ")"
-    # Color by individual room/usage type
-    top10["_color"] = top10["usage"].apply(_get_room_color)
+    total_rooms = len(valid_rooms)
+    if total_rooms <= 5:
+        n_show = total_rooms
+    else:
+        default_n = min(50, total_rooms)
+        n_show = st.slider(
+            "Number of rooms to display",
+            min_value=5, max_value=total_rooms,
+            value=default_n, step=1, key="p3_room_count",
+        )
 
-    fig_top10 = go.Figure(go.Bar(
-        x=top10["area_m2"],
-        y=top10["_label"],
+    top_rooms = valid_rooms.nlargest(n_show, "area_m2").sort_values("area_m2", ascending=True)
+    name_col = "name" if "name" in top_rooms.columns else "usage"
+    top_rooms = top_rooms.copy()
+    top_rooms["_label"] = top_rooms[name_col].astype(str) + " (" + top_rooms["sia_group"] + ")"
+    top_rooms["_color"] = top_rooms["usage"].apply(_get_room_color)
+
+    fig_rooms = go.Figure(go.Bar(
+        x=top_rooms["area_m2"],
+        y=top_rooms["_label"],
         orientation="h",
-        marker_color=top10["_color"].tolist(),
-        text=[f"{v:,.1f} m²".replace(",", "'") for v in top10["area_m2"]],
+        marker_color=top_rooms["_color"].tolist(),
+        text=[f"{v:,.1f} m²".replace(",", "'") for v in top_rooms["area_m2"]],
         textposition="outside",
         cliponaxis=False,
         hovertemplate="<b>%{y}</b><br>Area: %{x:,.1f} m²<extra></extra>",
     ))
-    fig_top10.update_layout(
+    fig_rooms.update_layout(
         template="plotly_white",
         xaxis_title="Area (m²)",
         yaxis_title="",
         showlegend=False,
         margin=dict(l=10, r=80, t=20, b=40),
-        height=max(280, len(top10) * 36),
+        height=min(max(280, len(top_rooms) * 36), 1400),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_top10, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_rooms, use_container_width=True, config={"displayModeBar": False})
 else:
     st.info("No valid room areas available.")
 
@@ -166,29 +177,21 @@ if "storey" in space_df.columns:
     st.subheader("🏢 Rooms per Storey")
     st.caption("Number of rooms per storey, broken down by room type.")
 
-    storey_usage = space_df.groupby(["storey", "usage"]).size().reset_index(name="count")
-    storeys = sorted(storey_usage["storey"].unique())
-    # Top-N usages to keep chart legible
-    top_usages = (
-        storey_usage.groupby("usage")["count"].sum()
-        .nlargest(12).index.tolist()
-    )
-    _palette = CATEGORICAL_COLORS * (len(top_usages) // len(CATEGORICAL_COLORS) + 1)
+    storey_sia = space_df.groupby(["storey", "sia_group"]).size().reset_index(name="count")
+    storeys = sorted(storey_sia["storey"].unique())
+    sia_order = ["HNF", "NNF", "VF", "FF", "KF"]
+    sia_present = [g for g in sia_order if g in storey_sia["sia_group"].unique()]
 
     fig_storey = go.Figure()
-    for i, usage in enumerate(top_usages):
-        sub = storey_usage[storey_usage["usage"] == usage]
-        u_counts = {row["storey"]: row["count"] for _, row in sub.iterrows()}
-        color = _get_room_color(usage)
-        # Fallback to palette if room color is generic grey
-        if color in ("#CCCCCC", "#C9CDD3", "#B8BFC7"):
-            color = _palette[i]
+    for group in sia_present:
+        sub = storey_sia[storey_sia["sia_group"] == group]
+        g_counts = {row["storey"]: row["count"] for _, row in sub.iterrows()}
         fig_storey.add_trace(go.Bar(
-            name=usage,
+            name=group,
             x=storeys,
-            y=[u_counts.get(s, 0) for s in storeys],
-            marker_color=color,
-            hovertemplate=f"<b>{usage}</b><br>Storey: %{{x}}<br>Count: %{{y}}<extra></extra>",
+            y=[g_counts.get(s, 0) for s in storeys],
+            marker_color=SIA_COLORS.get(group, "#CCCCCC"),
+            hovertemplate=f"<b>{group}</b><br>Storey: %{{x}}<br>Count: %{{y}}<extra></extra>",
         ))
     fig_storey.update_layout(
         template="plotly_white",

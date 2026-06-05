@@ -237,11 +237,13 @@ _b_view = st.radio(
     index=0, horizontal=True, key="p4_stacked_view",
 )
 _b_individual = _b_view.startswith("Individual")
+_b_top_n = 15
 if _b_individual:
+    _b_top_n = st.slider("Show top N materials by volume", min_value=5, max_value=50, value=15, step=5, key="p4_stacked_topn")
     st.caption("📊 Absolute volume (m³) per individual material per component category. Toggle materials via the legend.")
 else:
     st.caption("📊 Absolute volume (m³) per material group per component category. Toggle materials via the legend.")
-fig_stacked = create_element_material_stacked_bar(element_df, individual=_b_individual)
+fig_stacked = create_element_material_stacked_bar(element_df, individual=_b_individual, top_n=_b_top_n)
 fig_stacked.update_layout(
     height=500,
     legend=dict(
@@ -313,8 +315,11 @@ _s_view = st.radio(
     index=0, horizontal=True, key="p4_sankey_view",
 )
 _s_individual = _s_view.startswith("Individual")
+_s_top_n = 15
+if _s_individual:
+    _s_top_n = st.slider("Show top N materials by volume", min_value=5, max_value=50, value=15, step=5, key="p4_sankey_topn")
 st.caption("Flow from material group to element type by volume — shows which materials dominate which element types.")
-fig_sankey = create_material_flow_sankey(element_df, individual=_s_individual)
+fig_sankey = create_material_flow_sankey(element_df, individual=_s_individual, top_n=_s_top_n)
 st.plotly_chart(fig_sankey, use_container_width=True, key="p4_sankey")
 
 # -- Quantity Takeoff Table ----------------------------------------------------

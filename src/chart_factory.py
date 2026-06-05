@@ -612,7 +612,7 @@ def create_room_co2_scatter(space_df: pd.DataFrame, selected_raum: str = None) -
 # ── Stacked Bar Chart 100%: "Bauteil-Material-Verteilung" ──────────────────
 
 
-def create_element_material_stacked_bar(element_df: pd.DataFrame, individual: bool = False) -> go.Figure:
+def create_element_material_stacked_bar(element_df: pd.DataFrame, individual: bool = False, top_n: int = 15) -> go.Figure:
     part_order = ["Wall", "Floor", "Ceiling", "Column", "Beam", "Door", "Window", "Roof", "Stair", "Other"]
 
     if (
@@ -673,8 +673,8 @@ def create_element_material_stacked_bar(element_df: pd.DataFrame, individual: bo
             ).astype(float)
 
         if individual:
-            # Cap to top-15 materials by total volume for legibility
-            top_mats = pivot_vol.sum().nlargest(15).index.tolist()
+            # Cap to top_n materials by total volume for legibility
+            top_mats = pivot_vol.sum().nlargest(top_n).index.tolist()
             pivot_vol = pivot_vol.reindex(columns=top_mats, fill_value=0)
             group_order = top_mats
         else:
@@ -1352,7 +1352,7 @@ def create_cost_breakdown_bar(element_df: pd.DataFrame, group_col: str = "groupe
     return fig
 
 def create_kbob_per_m3_bar(kbob_df: pd.DataFrame, value_col: str, title: str, unit: str, color: str) -> go.Figure:
-    """Bar chart: KBOB intensity per m³ by material (co2, cost, or grey energy)."""
+    """Vertical bar chart: KBOB intensity per m³ by material (co2, cost, or grey energy)."""
     if kbob_df is None or kbob_df.empty:
         return _empty_fig(f"No KBOB data for {value_col}")
     df = kbob_df.copy()
@@ -1360,26 +1360,26 @@ def create_kbob_per_m3_bar(kbob_df: pd.DataFrame, value_col: str, title: str, un
         return _empty_fig(f"Column '{value_col}' not found in KBOB data")
     df[value_col] = pd.to_numeric(df[value_col], errors="coerce")
     df = df.dropna(subset=[value_col])
-    df = df[df[value_col] > 0].sort_values(value_col, ascending=True)
+    df = df[df[value_col] > 0].sort_values(value_col, ascending=False)
     label_col = "material_label_de" if "material_label_de" in df.columns else "material_key"
     if df.empty:
         return _empty_fig(f"No positive values for {value_col}")
     fig = go.Figure(go.Bar(
-        x=df[value_col],
-        y=df[label_col],
-        orientation="h",
+        x=df[label_col],
+        y=df[value_col],
         marker_color=color,
         text=[f"{v:,.0f}".replace(",", "'") for v in df[value_col]],
         textposition="outside",
         cliponaxis=False,
-        hovertemplate=f"<b>%{{y}}</b><br>%{{x:,.1f}} {unit}<extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>%{{y:,.1f}} {unit}<extra></extra>",
     ))
     fig.update_layout(
         template="plotly_white",
-        xaxis_title=unit,
-        yaxis_title="",
-        height=max(400, len(df) * 22),
-        margin=dict(l=10, r=90, t=40, b=30),
+        yaxis_title=unit,
+        xaxis_title="",
+        xaxis_tickangle=-40,
+        height=360,
+        margin=dict(l=50, r=20, t=50, b=120),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
@@ -1478,7 +1478,7 @@ def create_ifc_class_bar(element_df: pd.DataFrame) -> go.Figure:
 # ── Status-/Phasenverteilung (Cockpit Overview) ───────────────────────────────
 
 
-def create_material_flow_sankey(element_df, individual: bool = False):
+def create_material_flow_sankey(element_df, individual: bool = False, top_n: int = 15):
     """Sankey: material group → element type → volume (flow encoding)."""
     if element_df is None or element_df.empty:
         return _empty_fig("No element data for Sankey")
@@ -1489,7 +1489,7 @@ def create_material_flow_sankey(element_df, individual: bool = False):
         # Cap to top-15 raw materials by volume
         if "volume_m3" in df.columns:
             df["volume_m3"] = pd.to_numeric(df["volume_m3"], errors="coerce").fillna(0)
-            top_mats = df.groupby("mat_group")["volume_m3"].sum().nlargest(15).index.tolist()
+            top_mats = df.groupby("mat_group")["volume_m3"].sum().nlargest(top_n).index.tolist()
             df.loc[~df["mat_group"].isin(top_mats), "mat_group"] = "Other"
     else:
         df["mat_group"] = df["material"].apply(_classify_material_group)
@@ -1529,20 +1529,13 @@ def create_material_flow_sankey(element_df, individual: bool = False):
         mat_colors = [_MATERIAL_GROUP_COLORS.get(m, "#B0BEC5") for m in mat_groups]
     node_colors = mat_colors + ["#90A4AE"] * len(elem_types)
 
-    # Pin source nodes to x≈0, target nodes to x≈1 so labels render outside
-    node_x = [0.001] * n_mat + [0.999] * len(elem_types)
-    n_total = len(nodes)
-    node_y = [(i + 1) / (n_total + 1) for i in range(n_total)]
-
     fig = go.Figure(go.Sankey(
-        arrangement="fixed",
+        arrangement="snap",
         node=dict(
             label=nodes,
             color=node_colors,
             pad=20,
             thickness=15,
-            x=node_x,
-            y=node_y,
         ),
         link=dict(
             source=source,
@@ -1557,7 +1550,7 @@ def create_material_flow_sankey(element_df, individual: bool = False):
         height=500,
         font=dict(family="Inter, sans-serif", size=12),
         paper_bgcolor="white",
-        margin=dict(l=120, r=120, t=50, b=10),
+        margin=dict(l=160, r=160, t=50, b=10),
     )
     return fig
 

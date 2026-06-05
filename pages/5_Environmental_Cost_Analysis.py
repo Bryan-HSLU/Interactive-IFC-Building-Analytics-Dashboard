@@ -145,6 +145,21 @@ if selected_mat_groups and _p5_group_col in element_df.columns:
 else:
     filtered_df = element_df
 
+# Build KBOB display dataframe: grouped mode → mean intensity per group; individual mode → all KBOB rows
+def _kbob_for_view(kbob_df: pd.DataFrame, individual: bool) -> pd.DataFrame:
+    if kbob_df is None or kbob_df.empty:
+        return kbob_df
+    if not individual:
+        # Aggregate KBOB rows by material group (mean intensity)
+        _k = kbob_df.copy()
+        _k["material_label_de"] = _k["material_key"].apply(_classify_material_group)
+        num_cols = ["co2e_kg_per_m3", "grey_energy_kwh_per_m3", "cost_chf_per_m3"]
+        _k[num_cols] = _k[num_cols].apply(pd.to_numeric, errors="coerce")
+        return _k.groupby("material_label_de")[num_cols].mean().reset_index()
+    return kbob_df
+
+_kbob_view = _kbob_for_view(kbob_df, _p5_mat_individual)
+
 # ── Tabs ──
 tabs = st.tabs(["🌱 CO₂ Emissions", "💰 Costs", "⚡ Grey Energy", "🔄 Combined / Trade-off"])
 tab_co2, tab_costs, tab_energy, tab_combined = tabs
@@ -157,18 +172,17 @@ with tab_co2:
         from **KBOB factors** (kg CO₂e per m³ of material) multiplied by the component volume.
         The **SIA 2032 limit** of 11 kg CO₂e/m²·a is the Swiss target for embodied carbon (grey energy emissions).
         """)
-    col_pareto, col_gauge = st.columns([2, 1])
-    with col_pareto:
-        st.subheader("CO₂ Drivers")
-        st.caption("Which material groups cause the largest share? (descending, with cumulative line)")
-        st.plotly_chart(create_co2_pareto(filtered_df, group_col=_p5_group_col), use_container_width=True, config={"displayModeBar": False})
-    with col_gauge:
-        st.subheader("CO₂ per m³ by Material")
-        st.caption("KBOB embodied carbon intensity (kg CO₂e per m³) — compare relative intensity of materials.")
-        st.plotly_chart(
-            create_kbob_per_m3_bar(kbob_df, "co2e_kg_per_m3", "CO₂ per m³", "kg CO₂e/m³", COLORS["error_critical"]),
-            use_container_width=True, config={"displayModeBar": False},
-        )
+    st.subheader("CO₂ Drivers")
+    st.caption("Which material groups cause the largest share? (descending, with cumulative line)")
+    st.plotly_chart(create_co2_pareto(filtered_df, group_col=_p5_group_col), use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("CO₂ per m³ by Material")
+    st.caption("KBOB embodied carbon intensity (kg CO₂e per m³) — compare relative intensity of materials.")
+    st.plotly_chart(
+        create_kbob_per_m3_bar(_kbob_view, "co2e_kg_per_m3", "CO₂ per m³", "kg CO₂e/m³", COLORS["error_critical"]),
+        use_container_width=True, config={"displayModeBar": False},
+    )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -257,7 +271,7 @@ with tab_costs:
     st.subheader("💰 Cost per m³ by Material")
     st.caption("KBOB unit cost (CHF per m³) — compare cost intensity across material types.")
     st.plotly_chart(
-        create_kbob_per_m3_bar(kbob_df, "cost_chf_per_m3", "Cost per m³", "CHF/m³", COLORS["primary"]),
+        create_kbob_per_m3_bar(_kbob_view, "cost_chf_per_m3", "Cost per m³", "CHF/m³", COLORS["primary"]),
         use_container_width=True, config={"displayModeBar": False},
     )
 
@@ -338,7 +352,7 @@ with tab_energy:
         st.subheader("⚡ Grey Energy per m³ by Material")
         st.caption("KBOB primary energy intensity (kWh per m³) — compare embodied energy across material types.")
         st.plotly_chart(
-            create_kbob_per_m3_bar(kbob_df, "grey_energy_kwh_per_m3", "Grey Energy per m³", "kWh/m³", COLORS["error_warning"]),
+            create_kbob_per_m3_bar(_kbob_view, "grey_energy_kwh_per_m3", "Grey Energy per m³", "kWh/m³", COLORS["error_warning"]),
             use_container_width=True, config={"displayModeBar": False},
         )
 

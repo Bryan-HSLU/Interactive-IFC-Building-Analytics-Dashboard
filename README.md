@@ -160,7 +160,7 @@ All prompts used are documented and submitted separately as required.
 
 ## Authors
 
-- Bryan Lüscher ([@Bryan-HSLU](https://github.com/Bryan-HSLU))
+- Bryan Wiederkehr ([@Bryan-HSLU](https://github.com/Bryan-HSLU))
 - Genc Haxhija ([@GencHaxhija](https://github.com/GencHaxhija))
 
 HSLU — Hochschule Luzern · I.BA_DVIZ_MM.F2601 · Spring 2026

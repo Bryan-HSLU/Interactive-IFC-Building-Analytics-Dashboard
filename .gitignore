@@ -20,6 +20,8 @@ docs/
 # IFC files (large binaries — share separately)
 *.ifc
 *.IFC
+# Exception: bundled sample file for demo
+!data/sample_building.ifc
 
 # Environment variables
 .env

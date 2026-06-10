@@ -26,7 +26,7 @@ def init_session_state():
 
     st.session_state.setdefault("filter_storeys", [])
     st.session_state.setdefault("filter_classes", [])
-    st.session_state.setdefault("filter_status", "Alle")
+    st.session_state.setdefault("filter_status", "All")
 
     st.session_state.setdefault("unit_area", "m\u00b2")
     st.session_state.setdefault("unit_volume", "m\u00b3")
@@ -87,7 +87,7 @@ def store_parsed_data(parsed_data: dict, mode: str, pset_config: dict):
 
     st.session_state.filter_storeys = []
     st.session_state.filter_classes = []
-    st.session_state.filter_status = "Alle"
+    st.session_state.filter_status = "All"
 
 
 def get_element_df(filtered: bool = True) -> pd.DataFrame:
@@ -124,12 +124,12 @@ def get_quality_data():
 def apply_global_filters(df: pd.DataFrame) -> pd.DataFrame:
     storeys = st.session_state.get("filter_storeys", [])
     classes = st.session_state.get("filter_classes", [])
-    status = st.session_state.get("filter_status", "Alle")
+    status = st.session_state.get("filter_status", "All")
 
     if storeys and "storey" in df.columns:
         df = df[df["storey"].isin(storeys)]
     if classes and "ifc_class" in df.columns:
         df = df[df["ifc_class"].isin(classes)]
-    if status != "Alle" and "status" in df.columns:
+    if status != "All" and "status" in df.columns:
         df = df[df["status"] == status]
     return df

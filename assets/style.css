@@ -79,6 +79,22 @@ footer { visibility: hidden; }
     overflow: hidden;
 }
 
+/* Sidebar multiselect/select: dark text on light input backgrounds */
+[data-testid="stSidebar"] [data-baseweb="select"] *,
+[data-testid="stSidebar"] [data-baseweb="tag"] *,
+[data-testid="stSidebar"] input {
+    color: #1B3A5B !important;
+}
+[data-testid="stSidebar"] [data-baseweb="tag"] {
+    background-color: #D6EAF8 !important;
+}
+/* Dropdown popover (rendered outside sidebar DOM) */
+[data-baseweb="popover"] [role="listbox"],
+[data-baseweb="popover"] [role="option"] {
+    background-color: #FFFFFF !important;
+    color: #1B3A5B !important;
+}
+
 /* Progress bar */
 .stProgress > div > div {
     background-color: #2980B9;

@@ -20,6 +20,11 @@ uploaded_file = st.file_uploader(
     help="Supported formats: IFC2x3, IFC4",
 )
 
+st.caption("— or —")
+if st.button("📂 Use Sample File", key="btn_sample", help="Load the included sample building model (IFC Export)"):
+    st.session_state["_use_sample_file"] = True
+    st.rerun()
+
 st.subheader("Project Mode")
 col1, col2 = st.columns(2)
 
@@ -87,9 +92,22 @@ else:
         ),
     }
 
+# Resolve sample file state
+use_sample = st.session_state.get("_use_sample_file", False)
+sample_path = "data/sample_building.ifc"
+if use_sample and not os.path.exists(sample_path):
+    st.error("Sample file not found at data/sample_building.ifc")
+    use_sample = False
+    st.session_state["_use_sample_file"] = False
+if uploaded_file is not None:
+    use_sample = False
+    st.session_state["_use_sample_file"] = False
+if use_sample:
+    st.info("📂 Using sample file: **sample_building.ifc**")
+
 # Start analysis button
 mode_ready = st.session_state.get("mode_project") is not None
-file_ready = uploaded_file is not None
+file_ready = uploaded_file is not None or use_sample
 
 st.divider()
 btn_disabled = not (file_ready and mode_ready)
@@ -113,9 +131,12 @@ if st.button(
 
         st.write("Reading file…")
         progress.progress(10)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
-            tmp.write(uploaded_file.read())
-            tmp_path = tmp.name
+        if use_sample:
+            tmp_path = sample_path
+        else:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                tmp.write(uploaded_file.read())
+                tmp_path = tmp.name
 
         try:
             st.write("Detecting IFC schema…")
@@ -157,12 +178,14 @@ if st.button(
         except ValueError as e:
             status_box.update(label="Error during analysis", state="error")
             st.error(f"Error: {e}")
-            os.unlink(tmp_path)
+            if not use_sample and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
             st.stop()
         except Exception as e:
             status_box.update(label="Unexpected error", state="error")
             st.error(f"Unexpected error: {e}")
-            os.unlink(tmp_path)
+            if not use_sample and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
             st.stop()
 
     for w in warnings:

@@ -50,7 +50,7 @@ def build_element_df(parsed_data: dict, mode: str, pset_config: dict) -> pd.Data
     df = normalize_materials(df)
     df = calculate_missing_quantities(df)
 
-    for col in ["co2e_total", "grey_energy_kwh", "cost_chf"]:
+    for col in ["co2e_total", "grey_energy_kwh", "cost_chf", "load_bearing"]:
         if col not in df.columns:
             df[col] = None
 

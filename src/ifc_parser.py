@@ -138,6 +138,24 @@ def extract_elements(model, element_to_storey: dict) -> list[dict]:
                 quantities = extract_quantities(element, psets)
                 materials = extract_materials(element)
 
+                # Read IsLoadBearing from standard Pset names
+                _lb_keys = ["IsLoadBearing", "LoadBearing", "isLoadBearing"]
+                _lb_val = None
+                for _pset_data in psets.values():
+                    for _k in _lb_keys:
+                        if _k in _pset_data:
+                            _lb_raw = _pset_data[_k]
+                            if isinstance(_lb_raw, bool):
+                                _lb_val = _lb_raw
+                            elif str(_lb_raw).lower() in ("true", "1", "yes", "ja"):
+                                _lb_val = True
+                            elif str(_lb_raw).lower() in ("false", "0", "no", "nein"):
+                                _lb_val = False
+                            if _lb_val is not None:
+                                break
+                    if _lb_val is not None:
+                        break
+
                 # ── Extract embedded ArchiCAD CO2 & energy values ──────────
                 co2_archicad = None
                 energy_archicad = None
@@ -174,6 +192,7 @@ def extract_elements(model, element_to_storey: dict) -> list[dict]:
                         ),
                         "material": materials[0] if materials else "Unbekannt",
                         "materials_all": materials,
+                        "load_bearing": _lb_val,
                         "psets": psets,
                         "area_m2": quantities.get("area"),
                         "volume_m3": volume,

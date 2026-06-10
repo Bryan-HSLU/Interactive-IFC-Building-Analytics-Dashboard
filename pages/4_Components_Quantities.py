@@ -528,15 +528,52 @@ with tab2:
 
         # ── Chart 2: Volume by Storey × Material Group ────────────────────────
         st.subheader("Volume by Storey & Material")
-        st.caption("Stacked volume (m³) per storey, colored by material group.")
+        st.caption("Stacked volume (m³) and element count per storey, colored by material.")
         _has_vol = "volume_m3" in comp_df.columns and pd.to_numeric(comp_df["volume_m3"], errors="coerce").fillna(0).gt(0).any()
-        _has_len = "length_m" in comp_df.columns and pd.to_numeric(comp_df["length_m"], errors="coerce").fillna(0).gt(0).any()
 
-        def _build_storey_mat_bar(value_col, y_title):
-            _tmp = comp_df.copy()
-            _tmp[value_col] = pd.to_numeric(_tmp[value_col], errors="coerce").fillna(0)
+        _mv1, _mv2 = st.columns([1, 1])
+        with _mv1:
+            _mat_view = st.radio(
+                "Material view",
+                options=["Grouped", "Individual"],
+                horizontal=True,
+                key="ca_storey_mat_view",
+            )
+        with _mv2:
+            if _mat_view == "Individual":
+                _mat_topn = st.slider(
+                    "Top N materials", min_value=3, max_value=20, value=8,
+                    key="ca_storey_mat_topn",
+                )
+
+        if _mat_view == "Grouped" or "material" not in comp_df.columns:
+            _mat_col = "grouped_material"
+            _color_map = lambda m: MATERIAL_GROUP_COLORS.get(m, "#BDBDBD")
+            _chart_df = comp_df
+        else:
+            _mat_col = "material"
+            _chart_df = comp_df.copy()
+            _chart_df["material"] = _chart_df["material"].fillna("(no material)")
+            _vol_by_mat = (
+                _chart_df.assign(_v=pd.to_numeric(_chart_df["volume_m3"], errors="coerce").fillna(0))
+                .groupby("material")["_v"].sum().sort_values(ascending=False)
+            )
+            _top_mats = _vol_by_mat.head(_mat_topn).index.tolist()
+            _chart_df = _chart_df[_chart_df["material"].isin(_top_mats)]
+            _mat_colors = {
+                m: CATEGORICAL_COLORS[i % len(CATEGORICAL_COLORS)]
+                for i, m in enumerate(_top_mats)
+            }
+            _color_map = lambda m: _mat_colors.get(m, "#BDBDBD")
+
+        def _build_storey_mat_bar(value_col, y_title, aggfunc="sum"):
+            _tmp = _chart_df.copy()
+            if aggfunc == "count":
+                _tmp["_val"] = 1
+            else:
+                _tmp["_val"] = pd.to_numeric(_tmp[value_col], errors="coerce").fillna(0)
             _pivot = _tmp.pivot_table(
-                index="storey", columns="grouped_material", values=value_col, aggfunc="sum"
+                index="storey", columns=_mat_col, values="_val", aggfunc="sum"
             ).fillna(0)
             _fig = go.Figure()
             for grp in _pivot.columns:
@@ -544,7 +581,7 @@ with tab2:
                     name=grp,
                     x=_pivot.index.tolist(),
                     y=_pivot[grp].tolist(),
-                    marker_color=MATERIAL_GROUP_COLORS.get(grp, "#BDBDBD"),
+                    marker_color=_color_map(grp),
                     hovertemplate=f"<b>{grp}</b><br>Storey: %{{x}}<br>{y_title}: %{{y:,.1f}}<extra></extra>",
                 ))
             _fig.update_layout(
@@ -560,20 +597,16 @@ with tab2:
             )
             return _fig
 
-        if _has_vol and _has_len:
-            _sc2a, _sc2b = st.columns(2)
-            with _sc2a:
-                st.caption("Volume (m³)")
+        _sc2a, _sc2b = st.columns(2)
+        with _sc2a:
+            st.caption("Volume (m³)")
+            if _has_vol:
                 st.plotly_chart(_build_storey_mat_bar("volume_m3", "m³"), use_container_width=True, key="ca_chart2a")
-            with _sc2b:
-                st.caption("Length (m)")
-                st.plotly_chart(_build_storey_mat_bar("length_m", "m"), use_container_width=True, key="ca_chart2b")
-        elif _has_vol:
-            st.plotly_chart(_build_storey_mat_bar("volume_m3", "m³"), use_container_width=True, key="ca_chart2")
-        elif _has_len:
-            st.plotly_chart(_build_storey_mat_bar("length_m", "m"), use_container_width=True, key="ca_chart2")
-        else:
-            st.info("No volume or length data available for this selection.")
+            else:
+                st.info("No volume data available for this selection.")
+        with _sc2b:
+            st.caption("Count")
+            st.plotly_chart(_build_storey_mat_bar(None, "Count", aggfunc="count"), use_container_width=True, key="ca_chart2b")
 
         st.divider()
 
@@ -610,9 +643,17 @@ with tab2:
                     _grp_sums["volume_m3"].tolist()
                     + _agg4["volume_m3"].tolist()
                 )
+                def _lighten(hex_color, factor=0.5):
+                    h = hex_color.lstrip("#")
+                    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                    r2 = int(r + (255 - r) * factor)
+                    g2 = int(g + (255 - g) * factor)
+                    b2 = int(b + (255 - b) * factor)
+                    return f"#{r2:02x}{g2:02x}{b2:02x}"
+
                 _colors = (
                     [MATERIAL_GROUP_COLORS.get(g, "#BDBDBD") for g in _grp_sums["grouped_material"]]
-                    + [MATERIAL_GROUP_COLORS.get(g, "#BDBDBD") for g in _agg4["grouped_material"]]
+                    + [_lighten(MATERIAL_GROUP_COLORS.get(g, "#BDBDBD")) for g in _agg4["grouped_material"]]
                 )
                 fig_c4 = go.Figure(go.Treemap(
                     ids=_ids,

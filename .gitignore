@@ -12,6 +12,9 @@ __pycache__/
 
 # AI assistant context (project-internal only)
 CLAUDE.md
+claude.md
+.claude/
+.claude*
 docs/
 
 # Streamlit cache
@@ -38,4 +41,3 @@ Thumbs.db
 
 # Logs
 *.log
-.claude/

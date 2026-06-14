@@ -45,7 +45,7 @@ pip install -r requirements.txt
 
 > Requires **Python 3.10 or higher**.
 
-> ⚠️ `ifcopenshell` ships platform-specific binaries. If `pip install` fails, download the correct wheel for your OS and Python version from [ifcopenshell.org/python](https://ifcopenshell.org/python).
+>  `ifcopenshell` ships platform-specific binaries. If `pip install` fails, download the correct wheel for your OS and Python version from [ifcopenshell.org/python](https://ifcopenshell.org/python).
 
 ### 4. Run the app
 

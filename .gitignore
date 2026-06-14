@@ -10,13 +10,6 @@ __pycache__/
 *.pyd
 .Python
 
-# AI assistant context (project-internal only)
-CLAUDE.md
-claude.md
-.claude/
-.claude*
-docs/
-
 # Streamlit cache
 .streamlit/
 
